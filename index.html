@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ValueScan EV · OKX 期望值選幣引擎</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+:root{--bg:#06080e;--bg1:#0a0e18;--bg2:#0e1420;--bg3:#131c2e;--bg4:#192438;--border:#182038;--border2:#1e2d50;--accent:#00d4ff;--accent2:#7c3aed;--accent3:#f97316;--green:#22c55e;--green2:#16a34a;--red:#ef4444;--red2:#b91c1c;--yellow:#f59e0b;--purple:#a855f7;--teal:#14b8a6;--text:#e2e8f0;--text2:#8899b4;--text3:#3d5470;--text4:#1e3050;}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Space Grotesk',sans-serif;overflow:hidden;}
+.app{display:grid;grid-template-rows:56px 1fr;grid-template-columns:236px 1fr;height:100vh;}
+
+/* HEADER */
+header{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:0 20px;background:var(--bg1);border-bottom:1px solid var(--border);z-index:20;position:relative;}
+header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.3;}
+.logo{display:flex;align-items:center;gap:10px;}
+.logo-mark{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#00d4ff 0%,#7c3aed 100%);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:#fff;letter-spacing:-1px;box-shadow:0 0 14px rgba(0,212,255,.3);}
+.logo-text{font-size:16px;font-weight:800;color:var(--text);letter-spacing:-.3px;}
+.logo-text span{color:var(--accent);}
+.logo-ev{font-size:10px;font-weight:800;padding:2px 7px;border-radius:4px;background:linear-gradient(90deg,var(--green2),var(--teal));color:#fff;margin-left:5px;letter-spacing:.5px;}
+.h-sep{width:1px;height:22px;background:var(--border2);}
+.mkt-strip{display:flex;gap:20px;overflow:hidden;}
+.mkt-item{display:flex;align-items:center;gap:7px;white-space:nowrap;}
+.mi-sym{font-size:10.5px;font-weight:700;color:var(--text2);}
+.mi-px{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;}
+.mi-ch{font-family:'JetBrains Mono',monospace;font-size:10px;}
+.h-sp{flex:1;}
+.ev-summary{display:flex;align-items:center;gap:16px;}
+.ev-pill{display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border2);border-radius:20px;padding:5px 12px;}
+.ev-pill-label{font-size:9.5px;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;}
+.ev-pill-val{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;}
+.live-pulse{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s ease infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.85)}}
+.conn-txt{font-size:11px;color:var(--text2);font-family:'JetBrains Mono',monospace;}
+.htime{font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;}
+.hbtn{background:var(--bg3);border:1px solid var(--border2);color:var(--text2);padding:6px 14px;border-radius:7px;font-size:11px;cursor:pointer;font-family:'Space Grotesk',sans-serif;transition:all .2s;}
+.hbtn:hover{border-color:var(--accent);color:var(--accent);}
+.hbtn.spin{border-color:var(--yellow);color:var(--yellow);}
+
+/* SIDEBAR */
+nav{background:var(--bg1);border-right:1px solid var(--border);padding:14px 0;overflow-y:auto;}
+.ng{padding:2px 12px 6px;font-size:9px;font-weight:700;color:var(--text4);letter-spacing:2px;text-transform:uppercase;margin-top:14px;}
+.ni{display:flex;align-items:center;gap:9px;padding:9px 14px;margin:1px 7px;border-radius:8px;font-size:12.5px;font-weight:500;color:var(--text2);cursor:pointer;transition:all .15s;user-select:none;position:relative;}
+.ni:hover{background:var(--bg3);color:var(--text);}
+.ni.on{background:rgba(0,212,255,.08);color:var(--accent);border:1px solid rgba(0,212,255,.16);}
+.ni.on::before{content:'';position:absolute;left:-7px;top:50%;transform:translateY(-50%);width:3px;height:18px;background:var(--accent);border-radius:2px;}
+.nicon{font-size:14px;width:18px;text-align:center;flex-shrink:0;}
+.nbadge{margin-left:auto;font-size:9px;padding:2px 6px;border-radius:10px;font-weight:800;}
+.nb-ev{background:rgba(34,197,94,.15);color:var(--green);}
+.nb-live{background:rgba(0,212,255,.12);color:var(--accent);}
+.nb-hot{background:rgba(249,115,22,.12);color:var(--accent3);}
+
+/* MAIN */
+main{overflow-y:auto;padding:18px 20px;background:var(--bg);}
+.view{display:none;}.view.on{display:block;}
+
+/* SECTION */
+.sh{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;}
+.st{font-size:19px;font-weight:800;letter-spacing:-.4px;}
+.ss{font-size:11.5px;color:var(--text2);margin-top:3px;}
+.sr{display:flex;align-items:center;gap:8px;}
+.chip{font-size:10px;padding:3px 11px;border-radius:20px;font-family:'JetBrains Mono',monospace;}
+.chip-c{background:rgba(0,212,255,.08);color:var(--accent);border:1px solid rgba(0,212,255,.18);}
+.chip-g{background:rgba(34,197,94,.08);color:var(--green);border:1px solid rgba(34,197,94,.2);}
+.chip-r{background:rgba(239,68,68,.08);color:var(--red);border:1px solid rgba(239,68,68,.2);}
+.chip-y{background:rgba(245,158,11,.08);color:var(--yellow);border:1px solid rgba(245,158,11,.22);}
+
+/* STAT ROW */
+.sr2{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:10px;margin-bottom:16px;}
+.sc2{background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:13px 15px;position:relative;overflow:hidden;}
+.sc2::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+.sc2.ca::after{background:linear-gradient(90deg,var(--accent),transparent);}
+.sc2.cg::after{background:linear-gradient(90deg,var(--green),transparent);}
+.sc2.cr::after{background:linear-gradient(90deg,var(--red),transparent);}
+.sc2.cy::after{background:linear-gradient(90deg,var(--yellow),transparent);}
+.sc2.cp::after{background:linear-gradient(90deg,var(--purple),transparent);}
+.sc2.ct::after{background:linear-gradient(90deg,var(--teal),transparent);}
+.sl2{font-size:9.5px;color:var(--text3);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:5px;}
+.sv2{font-size:22px;font-weight:800;font-family:'JetBrains Mono',monospace;line-height:1;}
+.sc3{font-size:10px;color:var(--text3);margin-top:4px;}
+
+/* TABLE */
+.tw{background:var(--bg1);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+.tb{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap;}
+.ti{background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:5px 11px;font-size:12px;color:var(--text);font-family:'Space Grotesk',sans-serif;outline:none;transition:border .2s;}
+.ti:focus{border-color:var(--accent);}
+.ti::placeholder{color:var(--text3);}
+.tbtn2{background:var(--bg2);border:1px solid var(--border2);color:var(--text2);padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Space Grotesk',sans-serif;transition:all .2s;white-space:nowrap;}
+.tbtn2:hover,.tbtn2.on{border-color:var(--accent);color:var(--accent);background:rgba(0,212,255,.05);}
+.tsp{flex:1;}
+.tinfo{font-size:11px;color:var(--text3);}
+table{width:100%;border-collapse:collapse;}
+thead th{font-size:9.5px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;}
+thead th:hover{color:var(--text2);}thead th.on{color:var(--accent);}
+tbody tr{border-bottom:1px solid rgba(24,32,56,.8);transition:background .1s;}
+tbody tr:last-child{border-bottom:none;}
+tbody tr:hover{background:rgba(255,255,255,.015);}
+td{padding:8px 12px;font-size:12.5px;vertical-align:middle;}
+
+/* COIN CELL */
+.cc2{display:flex;align-items:center;gap:9px;}
+.ci2{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--bg3),var(--border2));display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:var(--accent);border:1px solid var(--border2);flex-shrink:0;}
+.cn2{font-weight:700;font-size:13px;}
+.cs2{font-size:9.5px;color:var(--text3);font-family:'JetBrains Mono',monospace;}
+
+/* TAGS */
+.mono{font-family:'JetBrains Mono',monospace;font-size:12px;}
+.g{color:var(--green);}.r{color:var(--red);}.y{color:var(--yellow);}.c{color:var(--accent);}.p{color:var(--purple);}.t{color:var(--teal);}
+.tag2{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;}
+.tg{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.2);}
+.tr2{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2);}
+.tn{background:rgba(148,163,184,.08);color:var(--text2);border:1px solid rgba(148,163,184,.15);}
+.th{background:rgba(249,115,22,.1);color:var(--accent3);border:1px solid rgba(249,115,22,.2);}
+
+/* EV BADGE — THE KEY ELEMENT */
+.ev-badge{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:7px;font-size:11.5px;font-weight:800;letter-spacing:.3px;white-space:nowrap;position:relative;overflow:hidden;}
+.ev-badge::before{content:'';position:absolute;inset:0;opacity:.06;}
+.evl{background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.28);}
+.evl::before{background:var(--green);}
+.evs{background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.28);}
+.evs::before{background:var(--red);}
+.evm{background:rgba(245,158,11,.1);color:var(--yellow);border:1px solid rgba(245,158,11,.24);}
+.evm::before{background:var(--yellow);}
+.evn{background:rgba(148,163,184,.07);color:var(--text2);border:1px solid rgba(148,163,184,.14);}
+
+/* RR BADGE */
+.rr-badge{display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:5px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;}
+.rr-good{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.2);}
+.rr-ok{background:rgba(0,212,255,.08);color:var(--accent);border:1px solid rgba(0,212,255,.18);}
+.rr-bad{background:rgba(239,68,68,.08);color:var(--red);border:1px solid rgba(239,68,68,.18);}
+
+/* CONFIDENCE */
+.cf-wrap{display:flex;align-items:center;gap:7px;}
+.cf-bar{flex:1;max-width:65px;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden;}
+.cf-fill{height:100%;border-radius:3px;transition:width .4s;}
+.cf-num{font-family:'JetBrains Mono',monospace;font-size:11px;min-width:30px;}
+
+/* KELLY */
+.kelly-badge{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px;}
+.kelly-high{background:rgba(34,197,94,.1);color:var(--green);}
+.kelly-mid{background:rgba(0,212,255,.08);color:var(--accent);}
+.kelly-low{background:rgba(245,158,11,.08);color:var(--yellow);}
+.kelly-skip{background:rgba(239,68,68,.08);color:var(--red);}
+
+/* PRICE LEVELS */
+.lvl-cell{display:flex;flex-direction:column;gap:2px;}
+.lvl-row{display:flex;align-items:center;gap:5px;font-size:10.5px;}
+.lvl-label{color:var(--text3);min-width:16px;font-size:9.5px;font-weight:600;}
+.lvl-val{font-family:'JetBrains Mono',monospace;font-size:11px;}
+
+/* SCORE BAR */
+.sb-wrap{display:flex;align-items:center;gap:6px;}
+.sb-bg{flex:1;max-width:60px;height:4px;background:var(--bg3);border-radius:2px;}
+.sb-fill{height:100%;border-radius:2px;}
+.sb-num{font-family:'JetBrains Mono',monospace;font-size:11px;min-width:24px;}
+
+/* RISK */
+.rl2{display:inline-block;font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:4px;}
+.rl-d{background:rgba(239,68,68,.12);color:var(--red);}
+.rl-w{background:rgba(245,158,11,.12);color:var(--yellow);}
+.rl-s{background:rgba(34,197,94,.08);color:var(--green);}
+
+/* TABS */
+.tabs{display:flex;gap:3px;margin-bottom:14px;flex-wrap:wrap;}
+.tab{padding:6px 14px;border-radius:7px;font-size:12px;font-weight:500;cursor:pointer;color:var(--text2);background:var(--bg1);border:1px solid var(--border);transition:all .15s;user-select:none;}
+.tab:hover{color:var(--text);}.tab.on{background:rgba(0,212,255,.09);color:var(--accent);border-color:rgba(0,212,255,.22);}
+
+/* LOADING */
+.loading{display:flex;align-items:center;justify-content:center;padding:40px;gap:10px;color:var(--text3);font-size:12.5px;}
+.spin2{width:15px;height:15px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:rot .65s linear infinite;}
+@keyframes rot{to{transform:rotate(360deg)}}
+.empty2{text-align:center;padding:40px;color:var(--text3);font-size:13px;}
+
+/* EV CARD (opportunities view) */
+.opp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px;}
+.opp-card{background:var(--bg1);border:1px solid var(--border);border-radius:12px;padding:16px;position:relative;overflow:hidden;transition:border-color .2s,box-shadow .2s;}
+.opp-card:hover{border-color:var(--border2);box-shadow:0 0 20px rgba(0,0,0,.3);}
+.opp-card.opp-long{border-color:rgba(34,197,94,.2);}
+.opp-card.opp-long::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--green),transparent);}
+.opp-card.opp-short{border-color:rgba(239,68,68,.2);}
+.opp-card.opp-short::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--red),transparent);}
+.opp-card.opp-fr{border-color:rgba(20,184,166,.2);}
+.opp-card.opp-fr::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--teal),transparent);}
+.opp-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.opp-sym{font-size:18px;font-weight:900;letter-spacing:-.3px;}
+.opp-type{font-size:10px;color:var(--text3);}
+.opp-body{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;}
+.opp-m{font-size:10.5px;color:var(--text3);}
+.opp-m span{display:block;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--text);margin-top:2px;font-weight:600;}
+.opp-levels{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:10px;}
+.ol-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;font-size:11.5px;}
+.ol-row:last-child{margin-bottom:0;}
+.ol-label{color:var(--text3);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;}
+.ol-val{font-family:'JetBrains Mono',monospace;font-weight:700;}
+.opp-footer{display:flex;align-items:center;justify-content:space-between;}
+.opp-ev-num{font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:800;}
+.opp-ev-label{font-size:9.5px;color:var(--text3);margin-top:1px;}
+.opp-kelly{text-align:right;}
+.opp-kelly-val{font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:800;}
+.opp-kelly-label{font-size:9.5px;color:var(--text3);margin-top:1px;}
+.reasons{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;}
+.reason-chip{font-size:9.5px;padding:2px 7px;border-radius:4px;background:var(--bg3);color:var(--text2);border:1px solid var(--border2);}
+.reason-chip.pos{background:rgba(34,197,94,.07);color:var(--green);border-color:rgba(34,197,94,.18);}
+.reason-chip.neg{background:rgba(239,68,68,.07);color:var(--red);border-color:rgba(239,68,68,.18);}
+.reason-chip.teal{background:rgba(20,184,166,.07);color:var(--teal);border-color:rgba(20,184,166,.18);}
+
+/* FLOW GRID */
+.flow-grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;}
+.fc2{background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:13px 15px;}
+.fch{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.fcn{font-weight:700;font-size:14px;}
+.fcb{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.fcm{font-size:10.5px;color:var(--text3);}
+.fcm span{display:block;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--text);margin-top:2px;}
+.fc-net2{text-align:center;margin-top:9px;padding-top:9px;border-top:1px solid var(--border);}
+.fcnl{font-size:9.5px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;}
+.fcnv{font-size:17px;font-weight:800;font-family:'JetBrains Mono',monospace;margin-top:2px;}
+.ratio-bar{height:3px;background:var(--bg3);border-radius:2px;margin-top:6px;overflow:hidden;}
+.ratio-fill{height:100%;border-radius:2px;}
+
+/* WHALE */
+.wf{background:var(--bg1);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+.wi{display:flex;align-items:center;gap:10px;padding:9px 15px;border-bottom:1px solid rgba(24,32,56,.8);animation:sli .3s ease;}
+.wi:last-child{border-bottom:none;}
+@keyframes sli{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
+.ws2{font-size:10px;font-weight:800;padding:3px 8px;border-radius:4px;min-width:32px;text-align:center;}
+.wb{background:rgba(34,197,94,.1);color:var(--green);}
+.wsl{background:rgba(239,68,68,.1);color:var(--red);}
+.wco{font-weight:700;font-size:13px;min-width:56px;}
+.wu2{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent);flex:1;}
+.wpr{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text2);}
+.wti{font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace;min-width:48px;text-align:right;}
+
+/* OC GRID */
+.oc-grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;}
+.oc2{background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:13px 15px;}
+.och{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+.ocm{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+.ocml{font-size:10.5px;color:var(--text3);}
+.ocml span{display:block;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--text);margin-top:2px;}
+.fr-bar2{height:3px;background:var(--bg3);border-radius:2px;margin-top:8px;overflow:hidden;}
+.fr-fill2{height:100%;border-radius:2px;transition:width .5s;}
+
+/* RISK GRID */
+.rg{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;}
+.rc2{background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:13px 15px;}
+.rc2.rd{border-color:rgba(239,68,68,.28);background:rgba(239,68,68,.025);}
+.rc2.rw{border-color:rgba(245,158,11,.22);background:rgba(245,158,11,.018);}
+.rc2.rs{border-color:rgba(34,197,94,.14);}
+.rch{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.rcn{font-weight:800;font-size:14px;}
+.rcm{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.rcml{font-size:10.5px;color:var(--text3);}
+.rcml span{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text2);}
+
+/* SPREAD */
+.sp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;}
+.sp-card{background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:13px 15px;}
+.sp-card.sp-arb{border-color:rgba(20,184,166,.25);background:rgba(20,184,166,.02);}
+.sp-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.sp-name{font-weight:800;font-size:15px;}
+.sp-body{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+.sp-m{font-size:10.5px;color:var(--text3);}
+.sp-m span{display:block;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--text);margin-top:2px;}
+.sp-spread{text-align:center;margin-top:9px;padding-top:9px;border-top:1px solid var(--border);}
+.sp-spread-l{font-size:9.5px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;}
+.sp-spread-v{font-size:18px;font-weight:800;font-family:'JetBrains Mono',monospace;margin-top:2px;}
+
+/* STRATEGY */
+.str-g{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;}
+.str-c{background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:14px;}
+.str-c h3{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;}
+.fr2{display:flex;align-items:center;gap:9px;margin-bottom:10px;}
+.fr2 label{font-size:11.5px;color:var(--text2);min-width:115px;}
+.fr2 select{flex:1;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:5px 8px;font-size:12px;color:var(--text);font-family:'Space Grotesk',sans-serif;outline:none;}
+.fr2 input[type=range]{flex:1;accent-color:var(--accent);}
+.rv2{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent);min-width:44px;text-align:right;}
+.run-btn2{background:linear-gradient(135deg,var(--green2),var(--teal));border:none;color:#fff;padding:10px 26px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Space Grotesk',sans-serif;transition:opacity .2s;}
+.run-btn2:hover{opacity:.85;}
+.rst-btn2{background:var(--bg2);border:1px solid var(--border2);color:var(--text2);padding:9px 18px;border-radius:8px;font-size:13px;cursor:pointer;font-family:'Space Grotesk',sans-serif;}
+
+#toast{position:fixed;bottom:18px;right:18px;z-index:999;background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:9px 16px;border-radius:8px;font-size:12px;transform:translateY(50px);opacity:0;transition:all .22s;pointer-events:none;}
+#toast.show{transform:none;opacity:1;}
+::-webkit-scrollbar{width:4px;height:4px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <div class="logo"><div class="logo-mark">VS</div><div class="logo-text">Value<span>Scan</span><span class="logo-ev">EV</span></div></div>
+  <div class="h-sep"></div>
+  <div class="mkt-strip" id="mktStrip"></div>
+  <div class="h-sp"></div>
+  <div class="ev-summary">
+    <div class="ev-pill"><span class="ev-pill-label">EV+機會</span><span class="ev-pill-val g" id="evCount">-</span></div>
+    <div class="ev-pill"><span class="ev-pill-label">最高Kelly</span><span class="ev-pill-val g" id="topKelly">-</span></div>
+  </div>
+  <div class="live-pulse"></div>
+  <span class="conn-txt" id="connTxt">連接中…</span>
+  <span class="htime" id="htime">--:--:--</span>
+  <button class="hbtn" id="rfBtn" onclick="refreshAll()">↻ 刷新</button>
+</header>
+<nav>
+  <div class="ng">核心引擎</div>
+  <div class="ni on" data-v="opportunities" onclick="gv(this)"><span class="nicon">💎</span>EV+ 機會<span class="nbadge nb-ev">獲利優先</span></div>
+  <div class="ni" data-v="screener" onclick="gv(this)"><span class="nicon">🎯</span>全線選幣<span class="nbadge nb-hot">多空</span></div>
+  <div class="ni" data-v="leaderboard" onclick="gv(this)"><span class="nicon">🏆</span>市場榜單</div>
+  <div class="ng">資金追蹤</div>
+  <div class="ni" data-v="flow" onclick="gv(this)"><span class="nicon">💰</span>資金流向</div>
+  <div class="ni" data-v="whale" onclick="gv(this)"><span class="nicon">🐳</span>鯨魚動向<span class="nbadge nb-live">LIVE</span></div>
+  <div class="ng">深度數據</div>
+  <div class="ni" data-v="onchain" onclick="gv(this)"><span class="nicon">⛓</span>合約數據</div>
+  <div class="ni" data-v="spread" onclick="gv(this)"><span class="nicon">⚖️</span>現貨/合約套利</div>
+  <div class="ni" data-v="risk" onclick="gv(this)"><span class="nicon">⚠️</span>風險雷達</div>
+  <div class="ng">工具</div>
+  <div class="ni" data-v="strategy" onclick="gv(this)"><span class="nicon">⚙️</span>自訂策略</div>
+</nav>
+<main>
+
+<!-- ▸ EV+ 機會 -->
+<div class="view on" id="view-opportunities">
+  <div class="sh">
+    <div><div class="st">💎 EV+ 交易機會</div><div class="ss">期望值為正 · 含進場區 / 目標 / 止損 / R:R / Kelly倉位</div></div>
+    <div class="sr">
+      <span class="chip chip-g" id="oppLongCount">多 0</span>
+      <span class="chip chip-r" id="oppShortCount">空 0</span>
+      <span class="chip chip-t" id="oppFRCount" style="background:rgba(20,184,166,.08);color:var(--teal);border-color:rgba(20,184,166,.2)">費率套利 0</span>
+    </div>
+  </div>
+  <div class="sr2" id="oppStats"></div>
+  <div class="tabs">
+    <div class="tab on" onclick="oppTab(this,'all')">全部機會</div>
+    <div class="tab" onclick="oppTab(this,'long')">📈 做多機會</div>
+    <div class="tab" onclick="oppTab(this,'short')">📉 做空機會</div>
+    <div class="tab" onclick="oppTab(this,'fr')">💸 費率套利</div>
+    <div class="tab" onclick="oppTab(this,'rr3')">⭐ R:R ≥ 3</div>
+  </div>
+  <div id="oppGrid" class="opp-grid"><div class="loading"><div class="spin2"></div>計算 EV 中…</div></div>
+</div>
+
+<!-- ▸ 全線選幣 -->
+<div class="view" id="view-screener">
+  <div class="sh">
+    <div><div class="st">🎯 全線選幣</div><div class="ss">SWAP + SPOT · AI 多空信號 · 期望值評分</div></div>
+    <div class="sr"><span class="chip chip-c" id="scrChip">--</span></div>
+  </div>
+  <div class="sr2" id="scrStats"></div>
+  <div class="tw">
+    <div class="tb">
+      <input class="ti" style="width:155px" id="scrQ" placeholder="搜尋幣種…" oninput="renderScreener()">
+      <select class="ti" style="width:108px" id="scrSig" onchange="renderScreener()">
+        <option value="">全部信號</option><option value="LONG">📈 做多</option><option value="SHORT">📉 做空</option><option value="WATCH">👀 觀察</option><option value="FR">💸 費率套利</option>
+      </select>
+      <select class="ti" style="width:92px" id="scrType" onchange="renderScreener()">
+        <option value="">全線</option><option value="SWAP">永續合約</option><option value="SPOT">現貨</option>
+      </select>
+      <button class="tbtn2 on" id="ss-ev" onclick="ss2('ev')">EV↓</button>
+      <button class="tbtn2" id="ss-kelly" onclick="ss2('kelly')">Kelly</button>
+      <button class="tbtn2" id="ss-conf" onclick="ss2('conf')">信心度</button>
+      <button class="tbtn2" id="ss-vol" onclick="ss2('vol')">成交量</button>
+      <button class="tbtn2" id="ss-ch" onclick="ss2('ch')">漲跌幅</button>
+      <div class="tsp"></div>
+      <span class="tinfo">共 <b id="scrCnt" style="color:var(--text)">-</b></span>
+    </div>
+    <div id="scrBody"><div class="loading"><div class="spin2"></div>載入中…</div></div>
+  </div>
+</div>
+
+<!-- ▸ 榜單 -->
+<div class="view" id="view-leaderboard">
+  <div class="sh"><div><div class="st">🏆 市場榜單</div><div class="ss">OKX 全線即時 · 含 EV 評分</div></div></div>
+  <div class="tabs">
+    <div class="tab on" onclick="lbTab2(this,'ev')">💎 EV排行</div>
+    <div class="tab" onclick="lbTab2(this,'gainers')">🚀 漲幅</div>
+    <div class="tab" onclick="lbTab2(this,'losers')">📉 跌幅</div>
+    <div class="tab" onclick="lbTab2(this,'vol')">📊 成交量</div>
+    <div class="tab" onclick="lbTab2(this,'funding')">💸 資金費率</div>
+    <div class="tab" onclick="lbTab2(this,'rr')">⭐ R:R</div>
+    <div class="tab" onclick="lbTab2(this,'long')">📈 多頭</div>
+    <div class="tab" onclick="lbTab2(this,'short')">📉 空頭</div>
+  </div>
+  <div class="tw"><div id="lbBody2"><div class="loading"><div class="spin2"></div>載入中…</div></div></div>
+</div>
+
+<!-- ▸ 資金流 -->
+<div class="view" id="view-flow">
+  <div class="sh"><div><div class="st">💰 資金流向</div><div class="ss">買賣壓估算 · 淨流入/流出</div></div></div>
+  <div class="sr2" id="flowStats2"></div>
+  <div id="flowGrid2" class="flow-grid2"><div class="loading"><div class="spin2"></div>載入中…</div></div>
+</div>
+
+<!-- ▸ 鯨魚 -->
+<div class="view" id="view-whale">
+  <div class="sh">
+    <div><div class="st">🐳 鯨魚動向</div><div class="ss">大額成交 ≥$50K · 30s刷新</div></div>
+    <div class="sr"><span class="chip chip-c">AUTO 30s</span></div>
+  </div>
+  <div class="sr2" id="whaleStats2"></div>
+  <div class="wf" id="whaleFeed2"><div class="loading"><div class="spin2"></div>載入中…</div></div>
+</div>
+
+<!-- ▸ 合約數據 -->
+<div class="view" id="view-onchain">
+  <div class="sh"><div><div class="st">⛓ 合約深度數據</div><div class="ss">資金費率 · 持倉量 · 多空分析</div></div></div>
+  <div class="sr2" id="ocStats2"></div>
+  <div id="ocGrid2" class="oc-grid2"><div class="loading"><div class="spin2"></div>載入中…</div></div>
+</div>
+
+<!-- ▸ 套利 -->
+<div class="view" id="view-spread">
+  <div class="sh"><div><div class="st">⚖️ 現貨 / 合約套利</div><div class="ss">基差分析 · 資金費率套利 · 正負溢價</div></div></div>
+  <div class="sr2" id="spStats"></div>
+  <div id="spGrid" class="sp-grid"><div class="loading"><div class="spin2"></div>計算中…</div></div>
+</div>
+
+<!-- ▸ 風險雷達 -->
+<div class="view" id="view-risk">
+  <div class="sh"><div><div class="st">⚠️ 風險雷達</div><div class="ss">高波動 · 異常費率 · 爆倉預警</div></div></div>
+  <div class="sr2" id="riskStats2"></div>
+  <div id="riskGrid2" class="rg"><div class="loading"><div class="spin2"></div>分析中…</div></div>
+</div>
+
+<!-- ▸ 策略 -->
+<div class="view" id="view-strategy">
+  <div class="sh"><div><div class="st">⚙️ 自訂策略篩選</div><div class="ss">EV導向 · 多維條件 · 含Kelly過濾</div></div></div>
+  <div class="str-g">
+    <div class="str-c">
+      <h3>💎 期望值條件</h3>
+      <div class="fr2"><label>最低 EV 分數</label><input type="range" min="0" max="100" value="60" id="fEV" oninput="document.getElementById('fEVV').textContent=this.value"><span class="rv2" id="fEVV">60</span></div>
+      <div class="fr2"><label>最低 Kelly %</label><input type="range" min="0" max="30" value="3" id="fKelly" oninput="document.getElementById('fKellyV').textContent=this.value+'%'"><span class="rv2" id="fKellyV">3%</span></div>
+      <div class="fr2"><label>最低 R:R</label><input type="range" min="1" max="5" step="0.5" value="2" id="fRR" oninput="document.getElementById('fRRV').textContent=this.value+'x'"><span class="rv2" id="fRRV">2x</span></div>
+      <div class="fr2"><label>信號方向</label><select id="fSig2"><option value="">全部</option><option value="LONG">做多</option><option value="SHORT">做空</option><option value="FR">費率套利</option></select></div>
+    </div>
+    <div class="str-c">
+      <h3>📊 市場條件</h3>
+      <div class="fr2"><label>幣種類型</label><select id="fType2"><option value="">全部</option><option value="SWAP">永續合約</option><option value="SPOT">現貨</option></select></div>
+      <div class="fr2"><label>最低成交量(M)</label><input type="range" min="0" max="500" value="10" id="fVol2" oninput="document.getElementById('fVol2V').textContent=this.value+'M'"><span class="rv2" id="fVol2V">10M</span></div>
+      <div class="fr2"><label>資金費率</label><select id="fFund2"><option value="">全部</option><option value="pos">正費率</option><option value="neg">負費率</option><option value="high">高費率(&gt;0.05%)</option></select></div>
+      <div class="fr2"><label>風險等級</label><select id="fRisk2"><option value="">全部</option><option value="s">低風險</option><option value="w">中風險</option><option value="d">高風險</option></select></div>
+    </div>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;">
+    <button class="run-btn2" onclick="runStrategy2()">🚀 執行篩選</button>
+    <button class="rst-btn2" onclick="resetStrategy2()">重置</button>
+    <span style="font-size:12px;color:var(--text2)" id="stratInfo2"></span>
+  </div>
+  <div class="tw"><div id="stratBody2"><div class="empty2">設定條件後執行篩選</div></div></div>
+</div>
+
+</main>
+</div>
+<div id="toast"></div>
+<script>
+// ══════════════════════════════════════════════════════
+//  GLOBALS
+// ══════════════════════════════════════════════════════
+let swapT=[],spotT=[],allT=[];
+let scrSortKey='ev',scrSortDir=-1,lbTab2Current='ev',oppTabCurrent='all';
+const BASE='https://www.okx.com/api/v5';
+
+// ══════════════════════════════════════════════════════
+//  UTILS
+// ══════════════════════════════════════════════════════
+const fmt2=(n,d=2)=>{if(n===null||n===undefined||isNaN(n))return'--';const a=Math.abs(n);if(a>=1e9)return(n/1e9).toFixed(1)+'B';if(a>=1e6)return(n/1e6).toFixed(1)+'M';if(a>=1e3)return(n/1e3).toFixed(1)+'K';return n.toFixed(d);};
+const fmtP2=n=>{if(!n||isNaN(n))return'--';if(n>=10000)return n.toLocaleString('en-US',{maximumFractionDigits:0});if(n>=1)return n.toFixed(2);if(n>=0.01)return n.toFixed(4);return n.toFixed(8);};
+const pct2=n=>{if(isNaN(n))return'--';return(n>=0?'+':'')+n.toFixed(2)+'%';};
+const pcol2=n=>n>=0?'g':'r';
+const toast2=msg=>{const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2800);};
+
+async function okx2(p){
+  const r=await fetch(BASE+p,{headers:{Accept:'application/json'}});
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  const j=await r.json();
+  if(j.code!=='0')throw new Error(j.msg||'OKX API error');
+  return j.data;
+}
+
+// ══════════════════════════════════════════════════════
+//  CORE EV ENGINE
+// ══════════════════════════════════════════════════════
+function evEngine(t){
+  const ch=t.changePct;
+  const range=t.high24h-t.low24h;
+  const pos=range>0?(t.last-t.low24h)/range:0.5;
+  const fr=t.fundingRate!==null?t.fundingRate*100:null;
+
+  // ── Technical signal scores ──
+  const rsi=Math.max(10,Math.min(90,Math.round(30+pos*40+(ch>0?Math.min(10,ch):Math.max(-10,ch)))));
+  const bbPct=pos*100;
+  let longRaw=0,shortRaw=0,reasons=[];
+
+  // RSI
+  if(rsi<28){longRaw+=30;reasons.push({txt:'RSI超賣'+rsi,type:'pos'});}
+  else if(rsi>72){shortRaw+=30;reasons.push({txt:'RSI超買'+rsi,type:'neg'});}
+  else if(rsi<42){longRaw+=14;reasons.push({txt:'RSI低位'+rsi,type:'pos'});}
+  else if(rsi>58){shortRaw+=14;reasons.push({txt:'RSI高位'+rsi,type:'neg'});}
+
+  // Bollinger %B
+  if(bbPct<16){longRaw+=24;reasons.push({txt:'下軌附近',type:'pos'});}
+  else if(bbPct>84){shortRaw+=24;reasons.push({txt:'上軌附近',type:'neg'});}
+  else if(bbPct<30){longRaw+=10;}
+  else if(bbPct>70){shortRaw+=10;}
+
+  // Momentum
+  if(ch>7){longRaw+=20;reasons.push({txt:'強動能+'+ch.toFixed(1)+'%',type:'pos'});}
+  else if(ch>2.5){longRaw+=11;reasons.push({txt:'溫和上漲+'+ch.toFixed(1)+'%',type:'pos'});}
+  else if(ch<-7){shortRaw+=20;reasons.push({txt:'強跌動能'+ch.toFixed(1)+'%',type:'neg'});}
+  else if(ch<-2.5){shortRaw+=11;reasons.push({txt:'溫和下跌'+ch.toFixed(1)+'%',type:'neg'});}
+
+  // EMA proxy
+  if(pos<0.18){longRaw+=15;reasons.push({txt:'價格低區間',type:'pos'});}
+  else if(pos>0.82){shortRaw+=15;reasons.push({txt:'價格高區間',type:'neg'});}
+
+  // Volume
+  const volM=t.volCcy24h/1e6;
+  if(volM>300){if(ch>0){longRaw+=12;reasons.push({txt:'放量上漲',type:'pos'});}else{shortRaw+=12;reasons.push({txt:'放量下跌',type:'neg'});}}
+  else if(volM>50){if(ch>0)longRaw+=5;else shortRaw+=5;}
+
+  // Funding rate (SWAP only)
+  let frEV=0;
+  if(t.type==='SWAP'&&fr!==null){
+    if(fr<-0.07){longRaw+=22;frEV=Math.abs(fr)*3*8;reasons.push({txt:'空方高付費'+fr.toFixed(3)+'%',type:'teal'});}
+    else if(fr<-0.03){longRaw+=12;frEV=Math.abs(fr)*3*8;reasons.push({txt:'空方付費'+fr.toFixed(3)+'%',type:'teal'});}
+    else if(fr>0.12){shortRaw+=22;reasons.push({txt:'多方高付費+'+fr.toFixed(3)+'%',type:'neg'});}
+    else if(fr>0.05){shortRaw+=12;reasons.push({txt:'多方付費+'+fr.toFixed(3)+'%',type:'neg'});}
+    // Pure funding rate arbitrage
+    if(Math.abs(fr)>0.05){
+      t.frArb=true;
+      t.frArbAnnual=(Math.abs(fr)/100)*3*365*100; // annualised %
+    } else {t.frArb=false;}
+  }
+
+  // ── Direction & win probability ──
+  const total=longRaw+shortRaw;
+  let direction,winP;
+  if(total<15){direction='NEUTRAL';winP=0.5;}
+  else if(longRaw>shortRaw*1.35){direction='LONG';winP=0.45+Math.min(0.35,(longRaw/Math.max(total,1))*0.5);}
+  else if(shortRaw>longRaw*1.35){direction='SHORT';winP=0.45+Math.min(0.35,(shortRaw/Math.max(total,1))*0.5);}
+  else{direction='WATCH';winP=0.48;}
+
+  // ── Price levels ──
+  const atr=range*0.25; // ATR proxy = 25% of 24h range
+  let entry,target,stop,rr;
+  if(direction==='LONG'){
+    entry=t.last;
+    stop=Math.max(t.low24h, t.last-atr*1.2);
+    target=t.last+atr*3;
+    rr=target>entry&&stop<entry?(target-entry)/(entry-stop):0;
+  } else if(direction==='SHORT'){
+    entry=t.last;
+    stop=Math.min(t.high24h, t.last+atr*1.2);
+    target=t.last-atr*3;
+    rr=target<entry&&stop>entry?(entry-target)/(stop-entry):0;
+  } else {
+    entry=t.last;stop=t.last*(direction==='LONG'?0.97:1.03);
+    target=t.last*(direction==='LONG'?1.05:0.95);rr=1.5;
+  }
+
+  // ── EV calculation ──
+  // EV = winP * gain - (1-winP) * loss  (as % of entry)
+  const stopDist=Math.abs(entry-stop)/entry*100;
+  const targetDist=Math.abs(target-entry)/entry*100;
+  const ev=winP*targetDist-(1-winP)*stopDist+frEV;
+
+  // ── Kelly criterion ──
+  // f* = (winP*rr - (1-winP)) / rr  →  fraction of capital
+  const kelly=rr>0?Math.max(0,(winP*rr-(1-winP))/rr*100):0;
+  const halfKelly=kelly/2; // safer: half-Kelly
+
+  // ── Confidence ──
+  const confidence=Math.max(0,Math.min(92,Math.round(Math.max(longRaw,shortRaw)/(Math.max(total,1))*100)));
+
+  // ── Overall EV score 0-100 ──
+  const evScore=Math.max(0,Math.min(100,Math.round(50+ev*4+halfKelly*1.5)));
+
+  return{direction,winP,entry,target,stop,rr,ev,kelly,halfKelly,evScore,confidence,reasons,rsi,bbPct,longRaw,shortRaw,frEV};
+}
+
+function riskCalc2(t){
+  const ch=Math.abs(t.changePct);
+  const fr=t.fundingRate?Math.abs(t.fundingRate*100):0;
+  if(ch>8||fr>0.1)return'd';
+  if(ch>4||fr>0.05)return'w';
+  return's';
+}
+
+function processTicker2(t,type){
+  const instId=t.instId;
+  const sym=type==='SWAP'?instId.replace('-USDT-SWAP',''):instId.replace('-USDT','');
+  const last=parseFloat(t.last||0);
+  const sod=parseFloat(t.sodUtc0||t.open24h||last);
+  const changePct=sod>0?(last-sod)/sod*100:0;
+  return{instId,sym,type,last,open24h:sod,changePct,
+    vol24h:parseFloat(t.vol24h||0),volCcy24h:parseFloat(t.volCcy24h||0),
+    high24h:parseFloat(t.high24h||last),low24h:parseFloat(t.low24h||last),
+    bidPx:parseFloat(t.bidPx||0),askPx:parseFloat(t.askPx||0),
+    fundingRate:null,oi:null,frArb:false,frArbAnnual:0,
+    direction:'NEUTRAL',winP:.5,entry:last,target:last,stop:last,
+    rr:0,ev:0,kelly:0,halfKelly:0,evScore:50,confidence:0,
+    reasons:[],rsi:50,bbPct:50,longRaw:0,shortRaw:0,frEV:0,risk:'s'};
+}
+
+// ══════════════════════════════════════════════════════
+//  LOAD
+// ══════════════════════════════════════════════════════
+async function loadAll(){
+  const btn=document.getElementById('rfBtn');
+  btn.textContent='⏳ 載入';btn.classList.add('spin');
+  document.getElementById('connTxt').textContent='同步中…';
+  try{
+    const[sr,spR]=await Promise.all([okx2('/market/tickers?instType=SWAP'),okx2('/market/tickers?instType=SPOT')]);
+    swapT=sr.filter(t=>t.instId.endsWith('-USDT-SWAP')).map(t=>processTicker2(t,'SWAP'));
+    spotT=spR.filter(t=>t.instId.endsWith('-USDT')&&!t.instId.includes('USDT-USDT')).map(t=>processTicker2(t,'SPOT'));
+    try{
+      const frD=await okx2('/public/funding-rate-all');
+      const frM={};frD.forEach(f=>{frM[f.instId]=parseFloat(f.fundingRate);});
+      swapT.forEach(t=>{t.fundingRate=frM[t.instId]??null;});
+    }catch(e){}
+    allT=[...swapT,...spotT];
+    allT.forEach(t=>{
+      t.risk=riskCalc2(t);
+      const ev=evEngine(t);
+      Object.assign(t,ev);
+    });
+    document.getElementById('connTxt').textContent='OKX · '+allT.length+'幣種';
+    const evPos=allT.filter(t=>t.ev>0&&t.direction!=='NEUTRAL');
+    document.getElementById('evCount').textContent=evPos.length;
+    const topK=Math.max(...allT.map(t=>t.halfKelly)).toFixed(1);
+    document.getElementById('topKelly').textContent=topK+'%';
+    renderAll2();updateMktStrip();
+  }catch(e){document.getElementById('connTxt').textContent='連接失敗';toast2('⚠️ '+e.message);}
+  btn.textContent='↻ 刷新';btn.classList.remove('spin');
+}
+
+function updateMktStrip(){
+  const coins=['BTC','ETH','SOL','BNB','XRP','DOGE'];
+  document.getElementById('mktStrip').innerHTML=coins.map(c=>{
+    const t=swapT.find(x=>x.sym===c);if(!t)return'';
+    return`<div class="mkt-item"><span class="mi-sym">${c}</span><span class="mi-px" style="color:${t.changePct>=0?'var(--green)':'var(--red)'}">$${fmtP2(t.last)}</span><span class="mi-ch ${pcol2(t.changePct)}">${pct2(t.changePct)}</span></div>`;
+  }).join('');
+}
+
+function renderAll2(){
+  renderOpportunities();renderScreener();renderLeaderboard2();renderFlow2();renderOnchain2();renderSpread2();renderRisk2();updateGlobalStats2();
+}
+
+function updateGlobalStats2(){
+  const longs=allT.filter(t=>t.direction==='LONG').length;
+  const shorts=allT.filter(t=>t.direction==='SHORT').length;
+  const evPos=allT.filter(t=>t.ev>0&&t.direction!=='NEUTRAL'&&t.direction!=='WATCH');
+  const frArb=swapT.filter(t=>t.frArb).length;
+  document.getElementById('oppLongCount').textContent='多 '+allT.filter(t=>t.direction==='LONG'&&t.ev>0).length;
+  document.getElementById('oppShortCount').textContent='空 '+allT.filter(t=>t.direction==='SHORT'&&t.ev>0).length;
+  document.getElementById('oppFRCount').textContent='費率套利 '+frArb;
+  document.getElementById('scrChip').textContent=allT.length+' 幣種';
+  const avgEV=(evPos.reduce((a,t)=>a+t.ev,0)/Math.max(1,evPos.length)).toFixed(2);
+  document.getElementById('scrStats').innerHTML=`
+    <div class="sc2 cg"><div class="sl2">EV+多頭</div><div class="sv2" style="color:var(--green)">${allT.filter(t=>t.direction==='LONG'&&t.ev>0).length}</div><div class="sc3">期望值為正</div></div>
+    <div class="sc2 cr"><div class="sl2">EV+空頭</div><div class="sv2" style="color:var(--red)">${allT.filter(t=>t.direction==='SHORT'&&t.ev>0).length}</div></div>
+    <div class="sc2 ct"><div class="sl2">費率套利</div><div class="sv2" style="color:var(--teal)">${frArb}</div><div class="sc3">&gt;0.05%/8h</div></div>
+    <div class="sc2 ca"><div class="sl2">全線幣種</div><div class="sv2" style="color:var(--accent)">${allT.length}</div><div class="sc3">SWAP+SPOT</div></div>
+    <div class="sc2 cy"><div class="sl2">平均EV</div><div class="sv2" style="color:var(--yellow)">${avgEV}%</div><div class="sc3">EV+幣種</div></div>`;
+  document.getElementById('oppStats').innerHTML=`
+    <div class="sc2 cg"><div class="sl2">EV+做多</div><div class="sv2" style="color:var(--green)">${allT.filter(t=>t.direction==='LONG'&&t.ev>0).length}</div><div class="sc3">期望值為正</div></div>
+    <div class="sc2 cr"><div class="sl2">EV+做空</div><div class="sv2" style="color:var(--red)">${allT.filter(t=>t.direction==='SHORT'&&t.ev>0).length}</div></div>
+    <div class="sc2 ct"><div class="sl2">費率套利</div><div class="sv2" style="color:var(--teal)">${frArb}</div><div class="sc3">正負費率</div></div>
+    <div class="sc2 cp"><div class="sl2">R:R≥3</div><div class="sv2" style="color:var(--purple)">${allT.filter(t=>t.rr>=3&&t.ev>0).length}</div></div>
+    <div class="sc2 ca"><div class="sl2">最高Kelly</div><div class="sv2" style="color:var(--accent)">${Math.max(0,...allT.map(t=>t.halfKelly)).toFixed(1)}%</div><div class="sc3">半Kelly</div></div>`;
+}
+
+// ══════════════════════════════════════════════════════
+//  OPPORTUNITIES (EV+ cards)
+// ══════════════════════════════════════════════════════
+function oppTab(el,tab){document.querySelectorAll('#view-opportunities .tab').forEach(t=>t.classList.remove('on'));el.classList.add('on');oppTabCurrent=tab;renderOpportunities();}
+
+function renderOpportunities(){
+  let data=[...allT].filter(t=>{
+    if(oppTabCurrent==='long')return t.direction==='LONG'&&t.ev>0;
+    if(oppTabCurrent==='short')return t.direction==='SHORT'&&t.ev>0;
+    if(oppTabCurrent==='fr')return t.frArb;
+    if(oppTabCurrent==='rr3')return t.rr>=3&&t.ev>0;
+    return (t.ev>0&&t.direction!=='NEUTRAL'&&t.direction!=='WATCH')||t.frArb;
+  }).sort((a,b)=>b.evScore-a.evScore||b.halfKelly-a.halfKelly);
+
+  if(!data.length){document.getElementById('oppGrid').innerHTML='<div class="empty2">目前無 EV+ 機會，市場可能處於觀望期</div>';return;}
+
+  const kellyColor=k=>k>=8?'var(--green)':k>=4?'var(--accent)':k>=2?'var(--yellow)':'var(--red)';
+  const rrBadge=rr=>{if(rr>=3)return`<span class="rr-badge rr-good">R:R ${rr.toFixed(1)}x</span>`;if(rr>=2)return`<span class="rr-badge rr-ok">R:R ${rr.toFixed(1)}x</span>`;return`<span class="rr-badge rr-bad">R:R ${rr.toFixed(1)}x</span>`;};
+  const dirClass=t=>t.frArb?'opp-fr':t.direction==='LONG'?'opp-long':'opp-short';
+  const dirIcon=t=>t.frArb?'💸':t.direction==='LONG'?'📈':'📉';
+  const dirLabel=t=>t.frArb?'費率套利':t.direction==='LONG'?'做多':'做空';
+
+  document.getElementById('oppGrid').innerHTML=data.slice(0,60).map(t=>`
+    <div class="opp-card ${dirClass(t)}">
+      <div class="opp-head">
+        <div>
+          <div class="opp-sym">${t.sym}</div>
+          <div class="opp-type">${t.type} · ${dirIcon(t)} ${dirLabel(t)}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="margin-bottom:4px">${rrBadge(t.rr)}</div>
+          <span class="ev-badge ${t.direction==='LONG'||t.frArb?'evl':'evs'}">${dirIcon(t)} ${dirLabel(t)}</span>
+        </div>
+      </div>
+      <div class="opp-levels">
+        <div class="ol-row"><span class="ol-label">進場</span><span class="ol-val" style="color:var(--text)">$${fmtP2(t.entry)}</span></div>
+        <div class="ol-row"><span class="ol-label">目標</span><span class="ol-val" style="color:var(--green)">$${fmtP2(t.target)} <span style="font-size:10px;color:var(--text3)">(+${Math.abs((t.target-t.entry)/t.entry*100).toFixed(1)}%)</span></span></div>
+        <div class="ol-row"><span class="ol-label">止損</span><span class="ol-val" style="color:var(--red)">$${fmtP2(t.stop)} <span style="font-size:10px;color:var(--text3)">(-${Math.abs((t.stop-t.entry)/t.entry*100).toFixed(1)}%)</span></span></div>
+        ${t.frArb?`<div class="ol-row"><span class="ol-label">年化費率</span><span class="ol-val" style="color:var(--teal)">${t.frArbAnnual.toFixed(1)}%</span></div>`:''}
+      </div>
+      <div class="opp-body">
+        <div class="opp-m">勝率估算<span>${(t.winP*100).toFixed(0)}%</span></div>
+        <div class="opp-m">期望值<span style="color:${t.ev>=0?'var(--green)':'var(--red)'}">${t.ev>=0?'+':''}${t.ev.toFixed(2)}%</span></div>
+        <div class="opp-m">24h漲跌<span class="${pcol2(t.changePct)}">${pct2(t.changePct)}</span></div>
+        <div class="opp-m">成交量<span>$${fmt2(t.volCcy24h)}</span></div>
+        ${t.fundingRate!==null?`<div class="opp-m">資金費率<span style="color:${t.fundingRate<0?'var(--green)':'var(--red)'}">${(t.fundingRate*100).toFixed(4)}%</span></div>`:''}
+        <div class="opp-m">風險等級<span><span class="rl2 rl-${t.risk}">${t.risk==='d'?'⚠高':t.risk==='w'?'⚡中':'✓低'}</span></span></div>
+      </div>
+      <div class="opp-footer">
+        <div><div class="opp-ev-num" style="color:${t.evScore>=65?'var(--green)':t.evScore>=45?'var(--accent)':'var(--yellow)'}">${t.evScore}</div><div class="opp-ev-label">EV評分</div></div>
+        <div class="opp-kelly"><div class="opp-kelly-val" style="color:${kellyColor(t.halfKelly)}">${t.halfKelly.toFixed(1)}%</div><div class="opp-kelly-label">建議倉位(半Kelly)</div></div>
+      </div>
+      <div class="reasons">${t.reasons.slice(0,4).map(r=>`<span class="reason-chip ${r.type}">${r.txt}</span>`).join('')}</div>
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════════════════════
+//  SCREENER
+// ══════════════════════════════════════════════════════
+function ss2(k){if(scrSortKey===k)scrSortDir*=-1;else{scrSortKey=k;scrSortDir=-1;}document.querySelectorAll('[id^="ss-"]').forEach(b=>b.classList.remove('on'));document.getElementById('ss-'+k)?.classList.add('on');renderScreener();}
+
+const evBadge2=t=>{if(t.frArb)return'<span class="ev-badge evm" style="font-size:10px;padding:3px 8px">💸 費率套利</span>';if(t.direction==='LONG')return'<span class="ev-badge evl" style="font-size:10px;padding:3px 8px">📈 做多</span>';if(t.direction==='SHORT')return'<span class="ev-badge evs" style="font-size:10px;padding:3px 8px">📉 做空</span>';if(t.direction==='WATCH')return'<span class="ev-badge evm" style="font-size:10px;padding:3px 8px">👀 觀察</span>';return'<span class="ev-badge evn" style="font-size:10px;padding:3px 8px">— 中性</span>';};
+const cfBar2=t=>{const c=t.confidence>=70?'var(--green)':t.confidence>=50?'var(--accent)':t.confidence>=30?'var(--yellow)':'var(--red)';return`<div class="cf-wrap"><div class="cf-bar"><div class="cf-fill" style="width:${t.confidence}%;background:${c}"></div></div><span class="cf-num" style="color:${c}">${t.confidence}%</span></div>`;};
+const kellyBadge=t=>{const k=t.halfKelly;if(k>=8)return`<span class="kelly-badge kelly-high">${k.toFixed(1)}%</span>`;if(k>=4)return`<span class="kelly-badge kelly-mid">${k.toFixed(1)}%</span>`;if(k>=1)return`<span class="kelly-badge kelly-low">${k.toFixed(1)}%</span>`;return`<span class="kelly-badge kelly-skip">${k.toFixed(1)}%</span>`;};
+const rrBadge2=t=>{const rr=t.rr;if(rr>=3)return`<span class="rr-badge rr-good">${rr.toFixed(1)}x</span>`;if(rr>=2)return`<span class="rr-badge rr-ok">${rr.toFixed(1)}x</span>`;if(rr>0)return`<span class="rr-badge rr-bad">${rr.toFixed(1)}x</span>`;return'<span style="color:var(--text3)">--</span>';};
+
+function renderScreener(){
+  const q=(document.getElementById('scrQ')?.value||'').toUpperCase();
+  const sig=document.getElementById('scrSig')?.value||'';
+  const tp=document.getElementById('scrType')?.value||'';
+  let data=[...allT].filter(t=>{
+    if(q&&!t.sym.includes(q))return false;
+    if(sig==='FR'&&!t.frArb)return false;
+    if(sig&&sig!=='FR'&&t.direction!==sig)return false;
+    if(tp&&t.type!==tp)return false;
+    return true;
+  });
+  data.sort((a,b)=>{
+    const va=scrSortKey==='ev'?a.evScore:scrSortKey==='kelly'?a.halfKelly:scrSortKey==='conf'?a.confidence:scrSortKey==='vol'?a.volCcy24h:a.changePct;
+    const vb=scrSortKey==='ev'?b.evScore:scrSortKey==='kelly'?b.halfKelly:scrSortKey==='conf'?b.confidence:scrSortKey==='vol'?b.volCcy24h:b.changePct;
+    return(va-vb)*scrSortDir;
+  });
+  document.getElementById('scrCnt').textContent=data.length;
+  if(!data.length){document.getElementById('scrBody').innerHTML='<div class="empty2">無符合條件幣種</div>';return;}
+  document.getElementById('scrBody').innerHTML=`<table><thead><tr><th>#</th><th>幣種</th><th>類型</th><th>信號</th><th class="on">EV分</th><th>期望值</th><th>R:R</th><th>Kelly倉位</th><th>信心度</th><th>現價</th><th>24h漲跌</th><th>目標價</th><th>止損</th><th>費率</th><th>風險</th></tr></thead><tbody>${data.slice(0,120).map((t,i)=>{
+    const fr=t.fundingRate!==null?(t.fundingRate*100).toFixed(4)+'%':'--';
+    const frC=t.fundingRate===null?'':t.fundingRate<0?'g':t.fundingRate>0.05?'r':'';
+    const evC=t.evScore>=65?'g':t.evScore>=45?'c':'y';
+    return`<tr><td class="mono" style="color:var(--text3)">${i+1}</td><td><div class="cc2"><div class="ci2">${t.sym.slice(0,2)}</div><div><div class="cn2">${t.sym}</div><div class="cs2">${t.instId}</div></div></div></td><td><span class="tag2 ${t.type==='SWAP'?'th':'tn'}">${t.type==='SWAP'?'合約':'現貨'}</span></td><td>${evBadge2(t)}</td><td><div class="sb-wrap"><div class="sb-bg"><div class="sb-fill" style="width:${t.evScore}%;background:${t.evScore>=65?'var(--green)':t.evScore>=45?'var(--accent)':'var(--yellow)'}"></div></div><span class="sb-num ${evC}">${t.evScore}</span></div></td><td class="mono ${t.ev>=0?'g':'r'}">${t.ev>=0?'+':''}${t.ev.toFixed(2)}%</td><td>${rrBadge2(t)}</td><td>${kellyBadge(t)}</td><td>${cfBar2(t)}</td><td class="mono">$${fmtP2(t.last)}</td><td class="mono ${pcol2(t.changePct)}">${pct2(t.changePct)}</td><td class="mono g">$${fmtP2(t.target)}</td><td class="mono r">$${fmtP2(t.stop)}</td><td class="mono ${frC}">${fr}</td><td><span class="rl2 rl-${t.risk}">${t.risk==='d'?'⚠高':t.risk==='w'?'⚡中':'✓低'}</span></td></tr>`;
+  }).join('')}</tbody></table>`;
+}
+
+// ══════════════════════════════════════════════════════
+//  LEADERBOARD
+// ══════════════════════════════════════════════════════
+function lbTab2(el,tab){document.querySelectorAll('#view-leaderboard .tab').forEach(t=>t.classList.remove('on'));el.classList.add('on');lbTab2Current=tab;renderLeaderboard2();}
+function renderLeaderboard2(){
+  let data=[...allT],col='';
+  if(lbTab2Current==='ev'){data.sort((a,b)=>b.evScore-a.evScore);col='EV評分';}
+  else if(lbTab2Current==='gainers'){data.sort((a,b)=>b.changePct-a.changePct);col='漲幅';}
+  else if(lbTab2Current==='losers'){data.sort((a,b)=>a.changePct-b.changePct);col='跌幅';}
+  else if(lbTab2Current==='vol'){data.sort((a,b)=>b.volCcy24h-a.volCcy24h);col='成交量';}
+  else if(lbTab2Current==='funding'){data=data.filter(t=>t.fundingRate!==null);data.sort((a,b)=>Math.abs(b.fundingRate)-Math.abs(a.fundingRate));col='資金費率';}
+  else if(lbTab2Current==='rr'){data.sort((a,b)=>b.rr-a.rr);col='R:R';}
+  else if(lbTab2Current==='long'){data=data.filter(t=>t.direction==='LONG');data.sort((a,b)=>b.halfKelly-a.halfKelly);col='Kelly倉位';}
+  else if(lbTab2Current==='short'){data=data.filter(t=>t.direction==='SHORT');data.sort((a,b)=>b.halfKelly-a.halfKelly);col='Kelly倉位';}
+  data=data.slice(0,60);
+  document.getElementById('lbBody2').innerHTML=`<table><thead><tr><th>#</th><th>幣種</th><th>類型</th><th>信號</th><th>現價</th><th>24h漲跌</th><th>${col}</th><th>期望值</th><th>Kelly</th></tr></thead><tbody>${data.map((t,i)=>{
+    let c4='';
+    if(['gainers','losers'].includes(lbTab2Current))c4=`<span class="${pcol2(t.changePct)}">${pct2(t.changePct)}</span>`;
+    else if(lbTab2Current==='vol')c4='$'+fmt2(t.volCcy24h);
+    else if(lbTab2Current==='funding')c4=`<span class="${t.fundingRate<0?'g':'r'}">${(t.fundingRate*100).toFixed(4)}%</span>`;
+    else if(lbTab2Current==='rr')c4=rrBadge2(t);
+    else if(['long','short'].includes(lbTab2Current))c4=kellyBadge(t);
+    else c4=`<div class="sb-wrap"><div class="sb-bg"><div class="sb-fill" style="width:${t.evScore}%;background:${t.evScore>=65?'var(--green)':t.evScore>=45?'var(--accent)':'var(--yellow)'}"></div></div><span class="sb-num">${t.evScore}</span></div>`;
+    return`<tr><td class="mono" style="color:var(--text3);font-weight:700">${i+1}</td><td><div class="cc2"><div class="ci2">${t.sym.slice(0,2)}</div><div class="cn2">${t.sym}</div></div></td><td><span class="tag2 ${t.type==='SWAP'?'th':'tn'}">${t.type==='SWAP'?'合約':'現貨'}</span></td><td>${evBadge2(t)}</td><td class="mono">$${fmtP2(t.last)}</td><td class="mono ${pcol2(t.changePct)}">${pct2(t.changePct)}</td><td class="mono">${c4}</td><td class="mono ${t.ev>=0?'g':'r'}">${t.ev>=0?'+':''}${t.ev.toFixed(2)}%</td><td>${kellyBadge(t)}</td></tr>`;
+  }).join('')}</tbody></table>`;
+}
+
+// ══════════════════════════════════════════════════════
+//  FLOW / WHALE / ONCHAIN / SPREAD / RISK
+// ══════════════════════════════════════════════════════
+function renderFlow2(){
+  const top=[...swapT].sort((a,b)=>b.volCcy24h-a.volCcy24h).slice(0,24);
+  const tB=top.reduce((a,t)=>a+t.volCcy24h*0.5*(1+t.changePct/160),0);
+  const tS=top.reduce((a,t)=>a+t.volCcy24h*0.5*(1-t.changePct/160),0);
+  const net=tB-tS;
+  document.getElementById('flowStats2').innerHTML=`<div class="sc2 cg"><div class="sl2">估算買入</div><div class="sv2" style="color:var(--green)">$${fmt2(tB)}</div></div><div class="sc2 cr"><div class="sl2">估算賣出</div><div class="sv2" style="color:var(--red)">$${fmt2(tS)}</div></div><div class="sc2 ${net>=0?'cg':'cr'}"><div class="sl2">淨流入</div><div class="sv2" style="color:${net>=0?'var(--green)':'var(--red)'}">${net>=0?'+':''}$${fmt2(Math.abs(net))}</div></div><div class="sc2 ca"><div class="sl2">總成交量</div><div class="sv2" style="color:var(--accent)">$${fmt2(top.reduce((a,t)=>a+t.volCcy24h,0))}</div></div>`;
+  document.getElementById('flowGrid2').innerHTML=top.map(t=>{const buy=t.volCcy24h*0.5*(1+t.changePct/160),sell=t.volCcy24h*0.5*(1-t.changePct/160),netF=buy-sell,buyR=Math.round(buy/(buy+sell||1)*100);return`<div class="fc2"><div class="fch"><span class="fcn">${t.sym}</span><span class="mono" style="color:var(--text2);font-size:12px">$${fmtP2(t.last)}</span></div><div class="fcb"><div class="fcm">買入量<span class="g">$${fmt2(buy)}</span></div><div class="fcm">賣出量<span class="r">$${fmt2(sell)}</span></div><div class="fcm">買方佔比<span>${buyR}%</span></div><div class="fcm">總量<span>$${fmt2(t.volCcy24h)}</span></div></div><div class="ratio-bar"><div class="ratio-fill" style="width:${buyR}%;background:${buyR>50?'var(--green)':'var(--red)'}"></div></div><div class="fc-net2"><div class="fcnl">淨流入</div><div class="fcnv ${netF>=0?'g':'r'}">${netF>=0?'+':''}$${fmt2(Math.abs(netF))}</div></div></div>`;}).join('');
+}
+
+const WHALE_COINS2=['BTC-USDT-SWAP','ETH-USDT-SWAP','SOL-USDT-SWAP','BNB-USDT-SWAP','XRP-USDT-SWAP','DOGE-USDT-SWAP','AVAX-USDT-SWAP','ARB-USDT-SWAP','OP-USDT-SWAP','LINK-USDT-SWAP','ADA-USDT-SWAP','DOT-USDT-SWAP','PEPE-USDT-SWAP','SUI-USDT-SWAP'];
+async function loadWhale2(){
+  let whales=[];
+  const rs=await Promise.allSettled(WHALE_COINS2.map(async c=>{const d=await okx2('/market/trades?instId='+c+'&limit=100');return{coin:c.replace('-USDT-SWAP',''),trades:d};}));
+  rs.forEach(r=>{if(r.status!=='fulfilled')return;r.value.trades.forEach(t=>{const sz=parseFloat(t.sz||0),px=parseFloat(t.px||0),usd=sz*px;if(usd>=50000)whales.push({coin:r.value.coin,side:t.side,sz,px,usd,ts:new Date(parseInt(t.ts)).toLocaleTimeString('zh-TW')});});});
+  whales.sort((a,b)=>b.usd-a.usd);
+  const tb=whales.filter(w=>w.side==='buy').reduce((a,w)=>a+w.usd,0);
+  const ts=whales.filter(w=>w.side==='sell').reduce((a,w)=>a+w.usd,0);
+  document.getElementById('whaleStats2').innerHTML=`<div class="sc2 ca"><div class="sl2">大單數</div><div class="sv2" style="color:var(--accent)">${whales.length}</div><div class="sc3">≥$50K</div></div><div class="sc2 cg"><div class="sl2">鯨魚買入</div><div class="sv2" style="color:var(--green)">$${fmt2(tb)}</div></div><div class="sc2 cr"><div class="sl2">鯨魚賣出</div><div class="sv2" style="color:var(--red)">$${fmt2(ts)}</div></div><div class="sc2 ${tb>=ts?'cg':'cr'}"><div class="sl2">鯨魚偏向</div><div class="sv2" style="color:${tb>=ts?'var(--green)':'var(--red)'}">${tb>=ts?'做多':'做空'}</div><div class="sc3">比值 ${ts>0?(tb/ts).toFixed(2):'∞'}</div></div>`;
+  if(!whales.length){document.getElementById('whaleFeed2').innerHTML='<div class="empty2">暫無大單</div>';return;}
+  document.getElementById('whaleFeed2').innerHTML=whales.slice(0,50).map(w=>`<div class="wi"><span class="ws2 ${w.side==='buy'?'wb':'wsl'}">${w.side==='buy'?'買':'賣'}</span><span class="wco">${w.coin}</span><span class="wu2">$${fmt2(w.usd)}</span><span class="wpr">@ $${fmtP2(w.px)}</span><span class="wti">${w.ts}</span></div>`).join('');
+}
+
+function renderOnchain2(){
+  const top=[...swapT].filter(t=>t.fundingRate!==null).sort((a,b)=>b.volCcy24h-a.volCcy24h).slice(0,32);
+  const avgFR=top.reduce((a,t)=>a+(t.fundingRate||0),0)/top.length*100;
+  const pos=top.filter(t=>t.fundingRate>0).length;
+  document.getElementById('ocStats2').innerHTML=`<div class="sc2 ${avgFR>=0?'cg':'cr'}"><div class="sl2">平均費率</div><div class="sv2" style="color:${avgFR>=0?'var(--green)':'var(--red)'}">${avgFR.toFixed(4)}%</div><div class="sc3">8小時</div></div><div class="sc2 cg"><div class="sl2">正費率</div><div class="sv2" style="color:var(--green)">${pos}</div></div><div class="sc2 cr"><div class="sl2">負費率</div><div class="sv2" style="color:var(--red)">${top.length-pos}</div></div><div class="sc2 ca"><div class="sl2">合約幣種</div><div class="sv2" style="color:var(--accent)">${swapT.length}</div></div>`;
+  document.getElementById('ocGrid2').innerHTML=top.map(t=>{const fr=(t.fundingRate||0)*100;const frPct=Math.min(100,Math.abs(fr)/0.15*100);const frC=fr>=0?'var(--green)':'var(--red)';return`<div class="oc2"><div class="och"><span style="font-weight:800;font-size:14px">${t.sym}</span>${evBadge2(t)}</div><div class="ocm"><div class="ocml">資金費率<span style="color:${frC}">${fr.toFixed(4)}%</span></div><div class="ocml">成交量<span>$${fmt2(t.volCcy24h)}</span></div><div class="ocml">24h漲跌<span class="${pcol2(t.changePct)}">${pct2(t.changePct)}</span></div><div class="ocml">EV分<span style="color:${t.evScore>=65?'var(--green)':t.evScore>=45?'var(--accent)':'var(--yellow)'}">${t.evScore}</span></div></div><div class="fr-bar2"><div class="fr-fill2" style="width:${frPct}%;background:${frC}"></div></div></div>`;}).join('');
+}
+
+function renderSpread2(){
+  const pairs=[];
+  swapT.forEach(sw=>{const sp=spotT.find(s=>s.sym===sw.sym);if(!sp)return;const spread=(sw.last-sp.last)/sp.last*100;pairs.push({sym:sw.sym,swapPx:sw.last,spotPx:sp.last,spread,swapVol:sw.volCcy24h,spotVol:sp.volCcy24h,fr:sw.fundingRate,frArb:sw.frArb,frArbAnnual:sw.frArbAnnual,direction:sw.direction,evScore:sw.evScore});});
+  pairs.sort((a,b)=>Math.abs(b.spread)-Math.abs(a.spread));
+  const arb=pairs.filter(p=>Math.abs(p.spread)>0.2).length;
+  const frArbPairs=pairs.filter(p=>p.frArb);
+  document.getElementById('spStats').innerHTML=`<div class="sc2 ca"><div class="sl2">可對比對</div><div class="sv2" style="color:var(--accent)">${pairs.length}</div></div><div class="sc2 cy"><div class="sl2">套利機會</div><div class="sv2" style="color:var(--yellow)">${arb}</div><div class="sc3">基差&gt;0.2%</div></div><div class="sc2 ct"><div class="sl2">費率套利</div><div class="sv2" style="color:var(--teal)">${frArbPairs.length}</div><div class="sc3">&gt;0.05%/8h</div></div>`;
+  document.getElementById('spGrid').innerHTML=pairs.slice(0,48).map(p=>{
+    const isArb=Math.abs(p.spread)>0.2||p.frArb;
+    const fr=p.fr!==null?(p.fr*100).toFixed(4)+'%':'--';
+    return`<div class="sp-card ${isArb?'sp-arb':''}">
+      <div class="sp-head"><span class="sp-name">${p.sym}</span>${p.frArb?'<span class="ev-badge evm" style="font-size:10px;padding:2px 7px">💸套利</span>':'<span class="ev-badge evn" style="font-size:10px;padding:2px 7px">基差</span>'}</div>
+      <div class="sp-body">
+        <div class="sp-m">合約價<span>$${fmtP2(p.swapPx)}</span></div>
+        <div class="sp-m">現貨價<span>$${fmtP2(p.spotPx)}</span></div>
+        <div class="sp-m">合約量<span>$${fmt2(p.swapVol)}</span></div>
+        <div class="sp-m">現貨量<span>$${fmt2(p.spotVol)}</span></div>
+        <div class="sp-m">資金費率<span style="color:${p.fr!==null&&p.fr<0?'var(--green)':p.fr>0.05?'var(--red)':'var(--text)'}">${fr}</span></div>
+        ${p.frArb?`<div class="sp-m">年化套利<span style="color:var(--teal)">${p.frArbAnnual.toFixed(1)}%</span></div>`:''}
+      </div>
+      <div class="sp-spread"><div class="sp-spread-l">基差</div><div class="sp-spread-v" style="color:${Math.abs(p.spread)>0.3?'var(--yellow)':Math.abs(p.spread)>0.1?'var(--accent)':'var(--text2)'}">${p.spread>=0?'+':''}${p.spread.toFixed(4)}%</div></div>
+    </div>`;
+  }).join('');
+}
+
+function renderRisk2(){
+  const top=[...allT].sort((a,b)=>b.volCcy24h-a.volCcy24h).slice(0,80);
+  const d=top.filter(t=>t.risk==='d'),w=top.filter(t=>t.risk==='w');
+  document.getElementById('riskStats2').innerHTML=`<div class="sc2 cr"><div class="sl2">高風險</div><div class="sv2" style="color:var(--red)">${d.length}</div></div><div class="sc2 cy"><div class="sl2">中風險</div><div class="sv2" style="color:var(--yellow)">${w.length}</div></div><div class="sc2 cg"><div class="sl2">低風險</div><div class="sv2" style="color:var(--green)">${top.length-d.length-w.length}</div></div><div class="sc2 ca"><div class="sl2">監控</div><div class="sv2" style="color:var(--accent)">${top.length}</div></div>`;
+  const sorted=[...d,...w,...top.filter(t=>t.risk==='s')];
+  document.getElementById('riskGrid2').innerHTML=sorted.slice(0,36).map(t=>{const fr=t.fundingRate!==null?(t.fundingRate*100).toFixed(4)+'%':'--';const vola=(t.high24h-t.low24h)/t.last*100;return`<div class="rc2 r${t.risk}"><div class="rch"><span class="rcn">${t.sym} ${evBadge2(t)}</span><span class="rl2 rl-${t.risk}">${t.risk==='d'?'⚠高':t.risk==='w'?'⚡中':'✓低'}</span></div><div class="rcm"><div class="rcml">現價 <span>$${fmtP2(t.last)}</span></div><div class="rcml">24h漲跌 <span class="${pcol2(t.changePct)}">${pct2(t.changePct)}</span></div><div class="rcml">波動幅度 <span>${vola.toFixed(1)}%</span></div><div class="rcml">費率 <span>${fr}</span></div></div></div>`;}).join('');
+}
+
+// ══════════════════════════════════════════════════════
+//  STRATEGY
+// ══════════════════════════════════════════════════════
+function runStrategy2(){
+  const sig=document.getElementById('fSig2').value,minEV=parseInt(document.getElementById('fEV').value),minK=parseFloat(document.getElementById('fKelly').value),minRR=parseFloat(document.getElementById('fRR').value),tp=document.getElementById('fType2').value,minVol=parseInt(document.getElementById('fVol2').value)*1e6,fund=document.getElementById('fFund2').value,rsk=document.getElementById('fRisk2').value;
+  let data=allT.filter(t=>{
+    if(sig==='FR'&&!t.frArb)return false;
+    if(sig&&sig!=='FR'&&t.direction!==sig)return false;
+    if(t.evScore<minEV)return false;
+    if(t.halfKelly<minK)return false;
+    if(t.rr<minRR)return false;
+    if(tp&&t.type!==tp)return false;
+    if(t.volCcy24h<minVol)return false;
+    if(fund==='pos'&&!(t.fundingRate>0))return false;
+    if(fund==='neg'&&!(t.fundingRate<0))return false;
+    if(fund==='high'&&!(t.fundingRate&&Math.abs(t.fundingRate*100)>0.05))return false;
+    if(rsk&&t.risk!==rsk)return false;
+    return true;
+  }).sort((a,b)=>b.evScore-a.evScore||b.halfKelly-a.halfKelly);
+  document.getElementById('stratInfo2').textContent='篩出 '+data.length+' 幣種';
+  if(!data.length){document.getElementById('stratBody2').innerHTML='<div class="empty2">無符合條件，請放寬條件</div>';return;}
+  document.getElementById('stratBody2').innerHTML=`<table><thead><tr><th>#</th><th>幣種</th><th>類型</th><th>信號</th><th>EV分</th><th>期望值</th><th>R:R</th><th>Kelly倉位</th><th>現價</th><th>目標</th><th>止損</th><th>費率</th><th>風險</th></tr></thead><tbody>${data.map((t,i)=>{const fr=t.fundingRate!==null?(t.fundingRate*100).toFixed(4)+'%':'--';return`<tr><td class="mono" style="color:var(--text3)">${i+1}</td><td><div class="cc2"><div class="ci2">${t.sym.slice(0,2)}</div><div class="cn2">${t.sym}</div></div></td><td><span class="tag2 ${t.type==='SWAP'?'th':'tn'}">${t.type==='SWAP'?'合約':'現貨'}</span></td><td>${evBadge2(t)}</td><td><div class="sb-wrap"><div class="sb-bg"><div class="sb-fill" style="width:${t.evScore}%;background:${t.evScore>=65?'var(--green)':t.evScore>=45?'var(--accent)':'var(--yellow)'}"></div></div><span class="sb-num">${t.evScore}</span></div></td><td class="mono ${t.ev>=0?'g':'r'}">${t.ev>=0?'+':''}${t.ev.toFixed(2)}%</td><td>${rrBadge2(t)}</td><td>${kellyBadge(t)}</td><td class="mono">$${fmtP2(t.last)}</td><td class="mono g">$${fmtP2(t.target)}</td><td class="mono r">$${fmtP2(t.stop)}</td><td class="mono ${t.fundingRate!==null&&t.fundingRate<0?'g':t.fundingRate>0.05?'r':''}">${fr}</td><td><span class="rl2 rl-${t.risk}">${t.risk==='d'?'⚠高':t.risk==='w'?'⚡中':'✓低'}</span></td></tr>`;}).join('')}</tbody></table>`;
+}
+function resetStrategy2(){document.getElementById('fEV').value=60;document.getElementById('fEVV').textContent=60;document.getElementById('fKelly').value=3;document.getElementById('fKellyV').textContent='3%';document.getElementById('fRR').value=2;document.getElementById('fRRV').textContent='2x';document.getElementById('fVol2').value=10;document.getElementById('fVol2V').textContent='10M';['fSig2','fType2','fFund2','fRisk2'].forEach(id=>document.getElementById(id).value='');document.getElementById('stratInfo2').textContent='';document.getElementById('stratBody2').innerHTML='<div class="empty2">設定條件後執行篩選</div>';}
+
+// ══════════════════════════════════════════════════════
+//  NAV + INIT
+// ══════════════════════════════════════════════════════
+function gv(el){document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));el.classList.add('on');const v=el.dataset.v;document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));document.getElementById('view-'+v).classList.add('on');if(v==='whale')loadWhale2();}
+async function refreshAll(){toast2('🔄 刷新中…');await loadAll();const cv=document.querySelector('.ni.on')?.dataset.v;if(cv==='whale')loadWhale2();toast2('✅ 數據已更新');}
+setInterval(()=>document.getElementById('htime').textContent=new Date().toLocaleTimeString('zh-TW'),1000);
+loadAll();
+setInterval(loadAll,120000);
+setInterval(()=>{if(document.querySelector('.ni.on')?.dataset.v==='whale')loadWhale2();},30000);
+</script>
+</body>
+</html>
