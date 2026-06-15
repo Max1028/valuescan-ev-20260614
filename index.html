@@ -2617,9 +2617,9 @@ async function runSandaoScan() {
 
   // 取成交量前60名永續合約
   var targets = [...swapT]
-    .filter(t => t.volCcy24h > 1e6)
+    .filter(t => t.volCcy24h > 3e6)
     .sort((a, b) => b.volCcy24h - a.volCcy24h)
-    .slice(0, 100);
+    .slice(0, 60);
 
   var done = 0;
   var total = targets.length;
@@ -3218,7 +3218,7 @@ function gv(el){
   if(v==='orderflow') renderOrderFlow();
   if(v==='smartmoney'){ if(!smartMoneyData.length) refreshSmartMoney(); else renderSmartMoney(); }
   if(v==='aimonitor') renderAIMonitor();
-  if(v==='sandao') renderSandao();
+  if(v==='sandao'){ if(!sandaoData.length){ renderSandao(); runSandaoScan(); } else renderSandao(); }
 }
 async function refreshAll(){
   toast2('🔄 刷新中…');
