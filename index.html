@@ -2216,19 +2216,44 @@ var sandaoSentAlerts = new Set(); // 避免重複通知
 // ══════════════════════════════════════════════════════
 //  CANDLE FETCH — 抓 OKX 60分K (instType=SWAP)
 // ══════════════════════════════════════════════════════
-async function fetchCandles(instId, bar='1H', limit=260) {
-  try {
-    var d = await okx2(`/market/candles?instId=${instId}&bar=${bar}&limit=${limit}`);
-    // OKX format: [ts, open, high, low, close, vol, volCcy]
-    return d.map(c => ({
+async function fetchCandles(instId, bar='1H', limit=300) {
+  // OKX 單次最多回 300 根（history-candles），用 after 分頁補足
+  function mapC(arr){
+    return arr.map(c => ({
       ts:    parseInt(c[0]),
       open:  parseFloat(c[1]),
       high:  parseFloat(c[2]),
       low:   parseFloat(c[3]),
       close: parseFloat(c[4]),
       vol:   parseFloat(c[5]),
-    })).reverse(); // oldest first
-  } catch(e) { return []; }
+    }));
+  }
+  try {
+    // 第一批：最新 300 根
+    var d1 = await okx2(`/market/history-candles?instId=${instId}&bar=${bar}&limit=300`);
+    var all = mapC(d1);
+    // history-candles 已可一次給 300 根，足夠算 MA240
+    if (all.length < 250) {
+      // 後援：用一般 candles endpoint (上限100) 補
+      try {
+        var d2 = await okx2(`/market/candles?instId=${instId}&bar=${bar}&limit=100`);
+        var more = mapC(d2);
+        // 合併去重
+        var seen = {};
+        all.forEach(c => seen[c.ts] = true);
+        more.forEach(c => { if (!seen[c.ts]) all.push(c); });
+      } catch(e) {}
+    }
+    // 由舊到新排序
+    all.sort((a, b) => a.ts - b.ts);
+    return all;
+  } catch(e) {
+    // 完全失敗時退回一般 endpoint
+    try {
+      var d = await okx2(`/market/candles?instId=${instId}&bar=${bar}&limit=100`);
+      return mapC(d).reverse();
+    } catch(e2) { return []; }
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -2256,7 +2281,8 @@ function calcSlope(maArr, n=5) {
 //  CORE 三刀流 SCORING ENGINE
 // ══════════════════════════════════════════════════════
 function sandaoScore(candles, flowScore, flowEVBoost) {
-  if (!candles || candles.length < 250) return null;
+  if (!candles || candles.length < 120) return null;
+  // 不足240根時用可得最長週期替代小橘
 
   var closes = candles.map(c => c.close);
   var vols   = candles.map(c => c.vol);
@@ -2265,7 +2291,7 @@ function sandaoScore(candles, flowScore, flowEVBoost) {
   // ── 計算三條均線 ──
   var ma20  = calcMA(closes, 20);   // 小藍
   var ma60  = calcMA(closes, 60);   // 小綠
-  var ma240 = calcMA(closes, 240);  // 小橘
+  var ma240 = calcMA(closes, Math.min(240, closes.length - 1));  // 小橘(資料不足時用可得最長)
 
   var last  = closes[n-1];
   var prev  = closes[n-2];
@@ -2593,14 +2619,14 @@ async function runSandaoScan() {
   var targets = [...swapT]
     .filter(t => t.volCcy24h > 1e6)
     .sort((a, b) => b.volCcy24h - a.volCcy24h)
-    .slice(0, 150);
+    .slice(0, 100);
 
   var done = 0;
   var total = targets.length;
 
   // 批次處理，每批4個
-  for (var i = 0; i < targets.length; i += 4) {
-    var batch = targets.slice(i, i + 4);
+  for (var i = 0; i < targets.length; i += 6) {
+    var batch = targets.slice(i, i + 6);
     await Promise.allSettled(batch.map(async t => {
       var candles = await fetchCandles(t.instId, '1H', 260);
       var flow = orderFlowCache[t.sym] || null;
@@ -2622,7 +2648,7 @@ async function runSandaoScan() {
       document.getElementById('sdStatus').textContent =
         `掃描中 ${done}/${total} (${t.sym})`;
     }));
-    await new Promise(res => setTimeout(res, 400));
+    await new Promise(res => setTimeout(res, 200));
   }
 
   // 排序：分數高的在前
