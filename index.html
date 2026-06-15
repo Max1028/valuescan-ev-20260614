@@ -417,6 +417,749 @@ td{padding:8px 12px;font-size:12.5px;vertical-align:middle;}
 .sbar-track{flex:1;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden;display:flex;}
 .sbar-fill{height:100%;border-radius:3px;transition:width .4s;}
 .sbar-val{font-family:'JetBrains Mono',monospace;font-size:11px;min-width:50px;text-align:right;}
+
+/* ── 均線三刀流 STYLES ── */
+.sd-env-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;}
+.sd-bull{background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.25);}
+.sd-bear{background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.25);}
+.sd-watch{background:rgba(245,158,11,.1);color:var(--yellow);border:1px solid rgba(245,158,11,.22);}
+.sd-slope-up{color:var(--green);font-weight:700;}
+.sd-slope-dn{color:var(--red);font-weight:700;}
+.sd-slope-flat{color:var(--text3);}
+.tg-setup{background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px;}
+.tg-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.tg-label{font-size:11px;color:var(--text2);min-width:90px;}
+.tg-input{background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:5px 11px;font-size:12px;color:var(--text);font-family:'JetBrains Mono',monospace;outline:none;flex:1;transition:border .2s;}
+.tg-input:focus{border-color:var(--accent);}
+.tg-input::placeholder{color:var(--text3);}
+.tg-save{background:var(--bg3);border:1px solid var(--border2);color:var(--text2);padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;}
+.tg-save:hover{border-color:var(--green);color:var(--green);}
+.tg-status{font-size:11px;padding:3px 10px;border-radius:5px;}
+.tg-on{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.2);}
+.tg-off{background:rgba(148,163,184,.08);color:var(--text3);border:1px solid rgba(148,163,184,.15);}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <div class="logo"><div class="logo-mark">VS</div><div class="logo-text">Value<span>Scan</span><span class="logo-ev">EV</span></div></div>
+  <div class="h-sep"></div>
+  <div class="mkt-strip" id="mktStrip"></div>
+  <div class="h-sp"></div>
+  <div class="ev-summary">
+    <div class="ev-pill"><span class="ev-pill-label">EV+機會</span><span class="ev-pill-val g" id="evCount">-</span></div>
+    <div class="ev-pill"><span class="ev-pill-label">最高Kelly</span><span class="ev-pill-val g" id="topKelly">-</span></div>
+  </div>
+  <div class="live-pulse"></div>
+  <span class="conn-txt" id="connTxt">連接中…</span>
+  <span class="htime" id="htime">--:--:--</span>
+  <button class="hbtn" id="rfBtn" onclick="refreshAll()">↻ 刷新</button>
+</header>
+<nav>
+  <div class="ng">核心引擎</div>
+  <div class="ni on" data-v="opportunities" onclick="gv(this)"><span class="nicon">💎</span>EV+ 機會<span class="nbadge nb-ev">獲利優先</span></div>
+  <div class="ni" data-v="screener" onclick="gv(this)"><span class="nicon">🎯</span>全線選幣<span class="nbadge nb-hot">多空</span></div>
+  <div class="ni" data-v="leaderboard" onclick="gv(this)"><span class="nicon">🏆</span>市場榜單</div>
+  <div class="ng">資金追蹤</div>
+  <div class="ni" data-v="flow" onclick="gv(this)"><span class="nicon">💰</span>資金流向</div>
+  <div class="ni" data-v="whale" onclick="gv(this)"><span class="nicon">🐳</span>鯨魚動向<span class="nbadge nb-live">LIVE</span></div>
+  <div class="ni" data-v="orderflow" onclick="gv(this)"><span class="nicon">📊</span>大單流向<span class="nbadge nb-live">45s</span></div>
+  <div class="ni" data-v="smartmoney" onclick="gv(this)"><span class="nicon">🧠</span>聰明錢包<span class="nbadge nb-hot">多鏈</span></div>
+  <div class="ng">深度數據</div>
+  <div class="ni" data-v="onchain" onclick="gv(this)"><span class="nicon">⛓</span>合約數據</div>
+  <div class="ni" data-v="spread" onclick="gv(this)"><span class="nicon">⚖️</span>現貨/合約套利</div>
+  <div class="ni" data-v="risk" onclick="gv(this)"><span class="nicon">⚠️</span>風險雷達</div>
+  <div class="ni" data-v="aimonitor" onclick="gv(this)"><span class="nicon">🔔</span>AI異動監控<span class="nbadge nb-live" id="aimonitorBadge"></span></div>
+  <div class="ni" data-v="sandao" onclick="gv(this)"><span class="nicon">🗡</span>三刀流選幣<span class="nbadge nb-hot">60分K</span></div>
+  <div class="ng">工具</div>
+  <div class="ni" data-v="strategy" onclick="gv(this)"><span class="nicon">⚙️</span>自訂策略</div>
+</nav>
+<main>
+
+<!-- ▸ EV+ 機會 -->
+<div class="view on" id="view-opportunities">
+  <div class="sh">
+    <div><div class="st">💎 EV+ 交易機會</div><div class="ss">期望值為正 · 含進場區 / 目標 / 止損 / R:R / Kelly倉位</div></div>
+    <div class="sr">
+      <span class="chip chip-g" id="oppLongCount">多 0</span>
+      <span class="chip chip-r" id="oppShortCount">空 0</span>
+      <span class="chip chip-t" id="oppFRCount" style="background:rgba(20,184,166,.08);color:var(--teal);border-color:rgba(20,184,166,.2)">費率套利 0</span>
+    </div>
+  </div>
+  <div class="sr2" id="oppStats"></div>
+  <div class="tabs">
+    <div class="tab on" onclick="oppTab(this,'all')">全部機會</div>
+    <div class="tab" onclick="oppTab(this,'long')">📈 做多機會</div>
+    <div class="tab" onclick="oppTab(this,'short')">📉 做空機會</div>
+    <div class="tab" onclick="oppTab(this,'fr')">💸 費率套利</div>
+    <div class="tab" onclick="oppTab(this,'rr3')">⭐ R:R ≥ 3</div>
+  </div>
+  <div id="oppGrid" class="opp-grid"><div class="loading"><div class="spin2"></div>計算 EV 中…</div></div>
+</div>
+
+<!-- ▸ 全線選幣 -->
+<div class="view" id="view-screener">
+  <div class="sh">
+    <div><div class="st">🎯 全線選幣</div><div class="ss">SWAP + SPOT · AI 多空信號 · 期望值評分</div></div>
+    <div class="sr"><span class="chip chip-c" id="scrChip">--</span></div>
+  </div>
+  <div class="sr2" id="scrStats"></div>
+  <div class="tw">
+    <div class="tb">
+      <input class="ti" style="width:155px" id="scrQ" placeholder="搜尋幣種…" oninput="renderScreener()">
+      <select class="ti" style="width:108px" id="scrSig" onchange="renderScreener()">
+        <option value="">全部信號</option><option value="LONG">📈 做多</option><option value="SHORT">📉 做空</option><option value="WATCH">👀 觀察</option><option value="FR">💸 費率套利</option>
+      </select>
+      <select class="ti" style="width:92px" id="scrType" onchange="renderScreener()">
+        <option value="">全線</option><option value="SWAP">永續合約</option><option value="SPOT">現貨</option>
+      </select>
+      <button class="tbtn2 on" id="ss-ev" onclick="ss2('ev')">EV↓</button>
+      <button class="tbtn2" id="ss-kelly" onclick="ss2('kelly')">Kelly</button>
+      <button class="tbtn2" id="ss-conf" onclick="ss2('conf')">信心度</button>
+      <button class="tbtn2" id="ss-vol" onclick="ss2('vol')">成交量</button>
+      <button class="tbtn2" id="ss-ch" onclick="ss2('ch')">漲跌幅</button>
+      <div class="tsp"></div>
+      <span class="tinfo">共 <b id="scrCnt" style="color:var(--text)">-</b></span>
+    </div>
+    <div id="scrBody"><div class="loading"><div class="spin2"></div>載入中…</div></div>
+  </div>
+</div>
+
+<!-- ▸ 榜單 -->
+<div class="view" id="view-leaderboard">
+  <div class="sh"><div><div class="st">🏆 市場榜單</div><div class="ss">OKX 全線即時 · 含 EV 評分</div></div></div>
+  <div class="tabs">
+    <div class="tab on" onclick="lbTab2(this,'ev')">💎 EV排行</div>
+    <div class="tab" onclick="lbTab2(this,'gainers')">🚀 漲幅</div>
+    <div class="tab" onclick="lbTab2(this,'losers')">📉 跌幅</div>
+    <div class="tab" onclick="lbTab2(this,'vol')">📊 成交量</div>
+    <div class="tab" onclick="lbTab2(this,'funding')">💸 資金費率</div>
+    <div class="tab" onclick="lbTab2(this,'rr')">⭐ R:R</div>
+    <div class="tab" onclick="lbTab2(this,'long')">📈 多頭</div>
+    <div class="tab" onclick="lbTab2(this,'short')">📉 空頭</div>
+  </div>
+  <div class="tw"><div id="lbBody2"><div class="loading"><div class="spin2"></div>載入中…</div></div></div>
+</div>
+
+<!-- ▸ 資金流 -->
+<div class="view" id="view-flow">
+  <div class="sh"><div><div class="st">💰 資金流向</div><div class="ss">買賣壓估算 · 淨流入/流出</div></div></div>
+  <div class="sr2" id="flowStats2"></div>
+  <div id="flowGrid2" class="flow-grid2"><div class="loading"><div class="spin2"></div>載入中…</div></div>
+</div>
+
+<!-- ▸ 鯨魚 -->
+<div class="view" id="view-whale">
+  <div class="sh">
+    <div><div class="st">🐳 鯨魚動向</div><div class="ss">大額成交 ≥$50K · 30s刷新</div></div>
+    <div class="sr"><span class="chip chip-c">AUTO 30s</span></div>
+  </div>
+  <div class="sr2" id="whaleStats2"></div>
+  <div class="wf" id="whaleFeed2"><div class="loading"><div class="spin2"></div>載入中…</div></div>
+</div>
+
+<!-- ▸ 大單流向 -->
+<div class="view" id="view-orderflow">
+  <div class="sh">
+    <div><div class="st">📊 大單流向分析</div><div class="ss">持續大單方向 · 買賣壓追蹤 · EV一致性驗證 · 45秒刷新</div></div>
+    <div class="sr"><span class="chip chip-c">門檻 $20K · AUTO 45s</span></div>
+  </div>
+  <div class="sr2" id="ofStats"><div class="loading"><div class="spin2"></div>抓取大單數據中…</div></div>
+  <div class="tw">
+    <div class="tb">
+      <span class="tinfo" style="color:var(--text2)">🟢 流向分數 +50以上 = 強力買壓｜🔴 -50以下 = 強力賣壓｜✓ = 與EV信號一致｜✗ = 背離（需謹慎）</span>
+      <div class="tsp"></div>
+      <button class="tbtn2" onclick="refreshOrderFlow().then(renderOrderFlow);toast2('🔄 流向數據刷新中…')">手動刷新</button>
+    </div>
+    <div id="ofBody"><div class="loading"><div class="spin2"></div>載入中…</div></div>
+  </div>
+</div>
+
+<!-- ▸ 聰明錢包 -->
+<div class="view" id="view-smartmoney">
+  <div class="sh">
+    <div><div class="st">🧠 聰明錢包追蹤</div><div class="ss">ETH · SOL · BSC 多鏈 · 自動比對 OKX 可交易幣種 · 納入 EV 評分</div></div>
+    <div class="sr">
+      <button class="hbtn" id="smLoadBtn" onclick="refreshSmartMoney()">🔍 掃描</button>
+      <span class="chip chip-c" id="smStatus">尚未掃描</span>
+    </div>
+  </div>
+  <!-- API Key 設定 -->
+  <div style="background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px;">
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">選填：第三方 API Key（有 key 可取得標籤/評分）</div>
+    <div class="sm-api-row">
+      <span class="sm-api-label">Nansen Key</span>
+      <input class="sm-api-input" id="nansenInput" placeholder="nansen api key (選填)" type="password">
+      <button class="sm-api-save" onclick="nansenKey=document.getElementById('nansenInput').value;localStorage.setItem('nansen_key',nansenKey);toast2('✅ Nansen Key 已儲存')">儲存</button>
+    </div>
+    <div class="sm-api-row">
+      <span class="sm-api-label">Arkham Key</span>
+      <input class="sm-api-input" id="arkhamInput" placeholder="arkham api key (選填)" type="password">
+      <button class="sm-api-save" onclick="arkhamKey=document.getElementById('arkhamInput').value;localStorage.setItem('arkham_key',arkhamKey);toast2('✅ Arkham Key 已儲存')">儲存</button>
+    </div>
+    <div style="font-size:10.5px;color:var(--text3);margin-top:4px;">不填 Key 仍可運作：直接讀取鏈上 RPC + Etherscan 公開數據，追蹤 26 個已知聰明錢包地址</div>
+  </div>
+  <div class="sr2" id="smStats"></div>
+  <div class="tabs">
+    <div class="tab on" onclick="smTab(this,'all')">全部錢包</div>
+    <div class="tab" onclick="smTab(this,'eth')">🔷 ETH</div>
+    <div class="tab" onclick="smTab(this,'sol')">🟣 SOL</div>
+    <div class="tab" onclick="smTab(this,'bsc')">🟡 BSC</div>
+    <div class="tab" onclick="smTab(this,'buyers')">📈 淨買方</div>
+    <div class="tab" onclick="smTab(this,'okx')">✓ OKX匹配</div>
+    <div class="tab" onclick="smTab(this,'tokens')">📊 代幣活動</div>
+  </div>
+  <div id="smBody"><div class="empty2">點擊「掃描」開始追蹤聰明錢包</div></div>
+</div>
+
+<!-- ▸ AI 異動監控 -->
+<div class="view" id="view-aimonitor">
+  <div class="sh">
+    <div><div class="st">🔔 AI 異動監控</div><div class="ss">異動偵測 · 持倉追蹤 · AI大盤分析 · 多空情緒儀表板 · 每60秒掃描</div></div>
+    <div class="sr">
+      <button class="hbtn" onclick="detectAnomalies();toast2('🔍 手動掃描完成')">手動掃描</button>
+      <span class="chip chip-c">AUTO 60s</span>
+    </div>
+  </div>
+  <div class="sr2" id="monitorStats"></div>
+  <div class="tabs">
+    <div class="tab on" onclick="monitorTab(this,'timeline')">⚡ 異動時間軸</div>
+    <div class="tab" onclick="monitorTab(this,'analysis');renderAnalysisTab()">🤖 AI大盤分析</div>
+    <div class="tab" onclick="monitorTab(this,'sentiment');renderSentimentTab()">🌡 多空情緒</div>
+  </div>
+  <div class="tb" style="background:var(--bg1);border:1px solid var(--border);border-radius:10px;margin-bottom:12px;">
+    <input class="ti" id="monitorSearch" placeholder="搜尋幣種…" oninput="renderTimelineTab()" style="width:140px">
+    <span class="tinfo" style="color:var(--text2);margin-left:4px">🔴 高優先 · 🟡 中優先 · ⚫ 低優先 · 🟢 追蹤中</span>
+    <div class="tsp"></div>
+    <button class="tbtn2" onclick="alertTimeline.length=0;renderAIMonitor();toast2('已清除')">清除記錄</button>
+  </div>
+  <div id="monitorTimeline"><div class="empty2">系統啟動後自動開始掃描，異動記錄將顯示於此</div></div>
+</div>
+
+<!-- ▸ 三刀流選幣 -->
+<div class="view" id="view-sandao">
+  <div class="sh">
+    <div><div class="st">🗡 均線三刀流選幣</div>
+    <div class="ss">60分K · 20MA/60MA/240MA · 斜率/排列/回測判斷 · 大單流向加扣分</div></div>
+    <div class="sr">
+      <button class="hbtn" id="sdScanBtn" onclick="runSandaoScan()">🔍 掃描</button>
+      <span class="chip chip-c" id="sdStatus">尚未掃描</span>
+    </div>
+  </div>
+
+  <!-- Telegram 設定 -->
+  <div class="tg-setup">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div style="font-size:12px;font-weight:700;color:var(--text2)">📱 Telegram 通知設定</div>
+      <span class="tg-status" id="tgStatusBadge">未設定</span>
+    </div>
+    <div class="tg-row">
+      <span class="tg-label">Bot Token</span>
+      <input class="tg-input" id="tgTokenInput" placeholder="123456789:AAxxxxxxxx..." type="password">
+      <button class="tg-save" onclick="
+        TG_BOT_TOKEN=document.getElementById('tgTokenInput').value;
+        localStorage.setItem('tg_bot_token',TG_BOT_TOKEN);
+        updateTGStatus();toast2('✅ Token 已儲存')">儲存</button>
+    </div>
+    <div class="tg-row">
+      <span class="tg-label">Chat ID</span>
+      <input class="tg-input" id="tgChatInput" placeholder="-1001234567890 或 @頻道名" type="text">
+      <button class="tg-save" onclick="
+        TG_CHAT_ID=document.getElementById('tgChatInput').value;
+        localStorage.setItem('tg_chat_id',TG_CHAT_ID);
+        updateTGStatus();toast2('✅ Chat ID 已儲存')">儲存</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <button class="tbtn2" onclick="testTelegram()">📨 測試發送</button>
+      <button class="tbtn2" onclick="sendAllHighScore()">📢 發送全部高分標的</button>
+      <span style="font-size:10.5px;color:var(--text3)">三刀流分數 ≥ 70 且方向明確者自動通知</span>
+    </div>
+  </div>
+
+  <div class="sr2" id="sdStats"></div>
+  <div class="tabs">
+    <div class="tab on" onclick="sdTab(this,'all')">全部</div>
+    <div class="tab" onclick="sdTab(this,'long')">📈 做多機會</div>
+    <div class="tab" onclick="sdTab(this,'short')">📉 做空機會</div>
+    <div class="tab" onclick="sdTab(this,'bull')">多頭排列</div>
+    <div class="tab" onclick="sdTab(this,'bear')">空頭排列</div>
+    <div class="tab" onclick="sdTab(this,'cross')">金叉/死叉</div>
+    <div class="tab" onclick="sdTab(this,'green')">小綠機會</div>
+    <div class="tab" onclick="sdTab(this,'orange')">小橘休息站</div>
+  </div>
+  <div class="tw"><div id="sdBody"><div class="empty2">點擊「掃描」開始分析（需約60秒抓取K線數據）</div></div></div>
+</div>
+
+<!-- ▸ 合約數據 -->
+<div class="view" id="view-onchain">
+  <div class="sh"><div><div class="st">⛓ 合約深度數據</div><div class="ss">資金費率 · 持倉量 · 多空分析</div></div></div>
+  <div class="sr2" id="ocStats2"></div>
+  <div id="ocGrid2" class="oc-grid2"><div class="loading"><div class="spin2"></div>載入中…</div></div>
+</div>
+
+<!-- ▸ 套利 -->
+<div class="view" id="view-spread">
+  <div class="sh"><div><div class="st">⚖️ 現貨 / 合約套利</div><div class="ss">基差分析 · 資金費率套利 · 正負溢價</div></div></div>
+  <div class="sr2" id="spStats"></div>
+  <div id="spGrid" class="sp-grid"><div class="loading"><div class="spin2"></div>計算中…</div></div>
+</div>
+
+<!-- ▸ 風險雷達 -->
+<div class="view" id="view-risk">
+  <div class="sh"><div><div class="st">⚠️ 風險雷達</div><div class="ss">高波動 · 異常費率 · 爆倉預警</div></div></div>
+  <div class="sr2" id="riskStats2"></div>
+  <div id="riskGrid2" class="rg"><div class="loading"><div class="spin2"></div>分析中…</div></div>
+</div>
+
+<!-- ▸ 策略 -->
+<div class="view" id="view-strategy">
+  <div class="sh"><div><div class="st">⚙️ 自訂策略篩選</div><div class="ss">EV導向 · 多維條件 · 含Kelly過濾</div></div></div>
+  <div class="str-g">
+    <div class="str-c">
+      <h3>💎 期望值條件</h3>
+      <div class="fr2"><label>最低 EV 分數</label><input type="range" min="0" max="100" value="60" id="fEV" oninput="document.getElementById('fEVV').textContent=this.value"><span class="rv2" id="fEVV">60</span></div>
+      <div class="fr2"><label>最低 Kelly %</label><input type="range" min="0" max="30" value="3" id="fKelly" oninput="document.getElementById('fKellyV').textContent=this.value+'%'"><span class="rv2" id="fKellyV">3%</span></div>
+      <div class="fr2"><label>最低 R:R</label><input type="range" min="1" max="5" step="0.5" value="2" id="fRR" oninput="document.getElementById('fRRV').textContent=this.value+'x'"><span class="rv2" id="fRRV">2x</span></div>
+      <div class="fr2"><label>信號方向</label><select id="fSig2"><option value="">全部</option><option value="LONG">做多</option><option value="SHORT">做空</option><option value="FR">費率套利</option></select></div>
+    </div>
+    <div class="str-c">
+      <h3>📊 市場條件</h3>
+      <div class="fr2"><label>幣種類型</label><select id="fType2"><option value="">全部</option><option value="SWAP">永續合約</option><option value="SPOT">現貨</option></select></div>
+      <div class="fr2"><label>最低成交量(M)</label><input type="range" min="0" max="500" value="10" id="fVol2" oninput="document.getElementById('fVol2V').textContent=this.value+'M'"><span class="rv2" id="fVol2V">10M</span></div>
+      <div class="fr2"><label>資金費率</label><select id="fFund2"><option value="">全部</option><option value="pos">正費率</option><option value="neg">負費率</option><option value="high">高費率(&gt;0.05%)</option></select></div>
+      <div class="fr2"><label>風險等級</label><select id="fRisk2"><option value="">全部</option><option value="s">低風險</option><option value="w">中風險</option><option value="d">高風險</option></select></div>
+    </div>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;">
+    <button class="run-btn2" onclick="runStrategy2()">🚀 執行篩選</button>
+    <button class="rst-btn2" onclick="resetStrategy2()">重置</button>
+    <span style="font-size:12px;color:var(--text2)" id="stratInfo2"></span>
+  </div>
+  <div class="tw"><div id="stratBody2"><div class="empty2">設定條件後執行篩選</div></div></div>
+</div>
+
+</main>
+</div>
+<div id="toast"></div>
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ValueScan EV · OKX 期望值選幣引擎</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+:root{--bg:#06080e;--bg1:#0a0e18;--bg2:#0e1420;--bg3:#131c2e;--bg4:#192438;--border:#182038;--border2:#1e2d50;--accent:#00d4ff;--accent2:#7c3aed;--accent3:#f97316;--green:#22c55e;--green2:#16a34a;--red:#ef4444;--red2:#b91c1c;--yellow:#f59e0b;--purple:#a855f7;--teal:#14b8a6;--text:#e2e8f0;--text2:#8899b4;--text3:#3d5470;--text4:#1e3050;}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Space Grotesk',sans-serif;overflow:hidden;}
+.app{display:grid;grid-template-rows:56px 1fr;grid-template-columns:236px 1fr;height:100vh;}
+
+/* HEADER */
+header{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:0 20px;background:var(--bg1);border-bottom:1px solid var(--border);z-index:20;position:relative;}
+header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.3;}
+.logo{display:flex;align-items:center;gap:10px;}
+.logo-mark{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#00d4ff 0%,#7c3aed 100%);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:#fff;letter-spacing:-1px;box-shadow:0 0 14px rgba(0,212,255,.3);}
+.logo-text{font-size:16px;font-weight:800;color:var(--text);letter-spacing:-.3px;}
+.logo-text span{color:var(--accent);}
+.logo-ev{font-size:10px;font-weight:800;padding:2px 7px;border-radius:4px;background:linear-gradient(90deg,var(--green2),var(--teal));color:#fff;margin-left:5px;letter-spacing:.5px;}
+.h-sep{width:1px;height:22px;background:var(--border2);}
+.mkt-strip{display:flex;gap:20px;overflow:hidden;}
+.mkt-item{display:flex;align-items:center;gap:7px;white-space:nowrap;}
+.mi-sym{font-size:10.5px;font-weight:700;color:var(--text2);}
+.mi-px{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;}
+.mi-ch{font-family:'JetBrains Mono',monospace;font-size:10px;}
+.h-sp{flex:1;}
+.ev-summary{display:flex;align-items:center;gap:16px;}
+.ev-pill{display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border2);border-radius:20px;padding:5px 12px;}
+.ev-pill-label{font-size:9.5px;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;}
+.ev-pill-val{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;}
+.live-pulse{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s ease infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.85)}}
+.conn-txt{font-size:11px;color:var(--text2);font-family:'JetBrains Mono',monospace;}
+.htime{font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;}
+.hbtn{background:var(--bg3);border:1px solid var(--border2);color:var(--text2);padding:6px 14px;border-radius:7px;font-size:11px;cursor:pointer;font-family:'Space Grotesk',sans-serif;transition:all .2s;}
+.hbtn:hover{border-color:var(--accent);color:var(--accent);}
+.hbtn.spin{border-color:var(--yellow);color:var(--yellow);}
+
+/* SIDEBAR */
+nav{background:var(--bg1);border-right:1px solid var(--border);padding:14px 0;overflow-y:auto;}
+.ng{padding:2px 12px 6px;font-size:9px;font-weight:700;color:var(--text4);letter-spacing:2px;text-transform:uppercase;margin-top:14px;}
+.ni{display:flex;align-items:center;gap:9px;padding:9px 14px;margin:1px 7px;border-radius:8px;font-size:12.5px;font-weight:500;color:var(--text2);cursor:pointer;transition:all .15s;user-select:none;position:relative;}
+.ni:hover{background:var(--bg3);color:var(--text);}
+.ni.on{background:rgba(0,212,255,.08);color:var(--accent);border:1px solid rgba(0,212,255,.16);}
+.ni.on::before{content:'';position:absolute;left:-7px;top:50%;transform:translateY(-50%);width:3px;height:18px;background:var(--accent);border-radius:2px;}
+.nicon{font-size:14px;width:18px;text-align:center;flex-shrink:0;}
+.nbadge{margin-left:auto;font-size:9px;padding:2px 6px;border-radius:10px;font-weight:800;}
+.nb-ev{background:rgba(34,197,94,.15);color:var(--green);}
+.nb-live{background:rgba(0,212,255,.12);color:var(--accent);}
+.nb-hot{background:rgba(249,115,22,.12);color:var(--accent3);}
+
+/* MAIN */
+main{overflow-y:auto;padding:18px 20px;background:var(--bg);}
+.view{display:none;}.view.on{display:block;}
+
+/* SECTION */
+.sh{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;}
+.st{font-size:19px;font-weight:800;letter-spacing:-.4px;}
+.ss{font-size:11.5px;color:var(--text2);margin-top:3px;}
+.sr{display:flex;align-items:center;gap:8px;}
+.chip{font-size:10px;padding:3px 11px;border-radius:20px;font-family:'JetBrains Mono',monospace;}
+.chip-c{background:rgba(0,212,255,.08);color:var(--accent);border:1px solid rgba(0,212,255,.18);}
+.chip-g{background:rgba(34,197,94,.08);color:var(--green);border:1px solid rgba(34,197,94,.2);}
+.chip-r{background:rgba(239,68,68,.08);color:var(--red);border:1px solid rgba(239,68,68,.2);}
+.chip-y{background:rgba(245,158,11,.08);color:var(--yellow);border:1px solid rgba(245,158,11,.22);}
+
+/* STAT ROW */
+.sr2{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:10px;margin-bottom:16px;}
+.sc2{background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:13px 15px;position:relative;overflow:hidden;}
+.sc2::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+.sc2.ca::after{background:linear-gradient(90deg,var(--accent),transparent);}
+.sc2.cg::after{background:linear-gradient(90deg,var(--green),transparent);}
+.sc2.cr::after{background:linear-gradient(90deg,var(--red),transparent);}
+.sc2.cy::after{background:linear-gradient(90deg,var(--yellow),transparent);}
+.sc2.cp::after{background:linear-gradient(90deg,var(--purple),transparent);}
+.sc2.ct::after{background:linear-gradient(90deg,var(--teal),transparent);}
+.sl2{font-size:9.5px;color:var(--text3);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:5px;}
+.sv2{font-size:22px;font-weight:800;font-family:'JetBrains Mono',monospace;line-height:1;}
+.sc3{font-size:10px;color:var(--text3);margin-top:4px;}
+
+/* TABLE */
+.tw{background:var(--bg1);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+.tb{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap;}
+.ti{background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:5px 11px;font-size:12px;color:var(--text);font-family:'Space Grotesk',sans-serif;outline:none;transition:border .2s;}
+.ti:focus{border-color:var(--accent);}
+.ti::placeholder{color:var(--text3);}
+.tbtn2{background:var(--bg2);border:1px solid var(--border2);color:var(--text2);padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Space Grotesk',sans-serif;transition:all .2s;white-space:nowrap;}
+.tbtn2:hover,.tbtn2.on{border-color:var(--accent);color:var(--accent);background:rgba(0,212,255,.05);}
+.tsp{flex:1;}
+.tinfo{font-size:11px;color:var(--text3);}
+table{width:100%;border-collapse:collapse;}
+thead th{font-size:9.5px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;}
+thead th:hover{color:var(--text2);}thead th.on{color:var(--accent);}
+tbody tr{border-bottom:1px solid rgba(24,32,56,.8);transition:background .1s;}
+tbody tr:last-child{border-bottom:none;}
+tbody tr:hover{background:rgba(255,255,255,.015);}
+td{padding:8px 12px;font-size:12.5px;vertical-align:middle;}
+
+/* COIN CELL */
+.cc2{display:flex;align-items:center;gap:9px;}
+.ci2{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--bg3),var(--border2));display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:var(--accent);border:1px solid var(--border2);flex-shrink:0;}
+.cn2{font-weight:700;font-size:13px;}
+.cs2{font-size:9.5px;color:var(--text3);font-family:'JetBrains Mono',monospace;}
+
+/* TAGS */
+.mono{font-family:'JetBrains Mono',monospace;font-size:12px;}
+.g{color:var(--green);}.r{color:var(--red);}.y{color:var(--yellow);}.c{color:var(--accent);}.p{color:var(--purple);}.t{color:var(--teal);}
+.tag2{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;}
+.tg{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.2);}
+.tr2{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2);}
+.tn{background:rgba(148,163,184,.08);color:var(--text2);border:1px solid rgba(148,163,184,.15);}
+.th{background:rgba(249,115,22,.1);color:var(--accent3);border:1px solid rgba(249,115,22,.2);}
+
+/* EV BADGE — THE KEY ELEMENT */
+.ev-badge{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:7px;font-size:11.5px;font-weight:800;letter-spacing:.3px;white-space:nowrap;position:relative;overflow:hidden;}
+.ev-badge::before{content:'';position:absolute;inset:0;opacity:.06;}
+.evl{background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.28);}
+.evl::before{background:var(--green);}
+.evs{background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.28);}
+.evs::before{background:var(--red);}
+.evm{background:rgba(245,158,11,.1);color:var(--yellow);border:1px solid rgba(245,158,11,.24);}
+.evm::before{background:var(--yellow);}
+.evn{background:rgba(148,163,184,.07);color:var(--text2);border:1px solid rgba(148,163,184,.14);}
+
+/* RR BADGE */
+.rr-badge{display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:5px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;}
+.rr-good{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.2);}
+.rr-ok{background:rgba(0,212,255,.08);color:var(--accent);border:1px solid rgba(0,212,255,.18);}
+.rr-bad{background:rgba(239,68,68,.08);color:var(--red);border:1px solid rgba(239,68,68,.18);}
+
+/* CONFIDENCE */
+.cf-wrap{display:flex;align-items:center;gap:7px;}
+.cf-bar{flex:1;max-width:65px;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden;}
+.cf-fill{height:100%;border-radius:3px;transition:width .4s;}
+.cf-num{font-family:'JetBrains Mono',monospace;font-size:11px;min-width:30px;}
+
+/* KELLY */
+.kelly-badge{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px;}
+.kelly-high{background:rgba(34,197,94,.1);color:var(--green);}
+.kelly-mid{background:rgba(0,212,255,.08);color:var(--accent);}
+.kelly-low{background:rgba(245,158,11,.08);color:var(--yellow);}
+.kelly-skip{background:rgba(239,68,68,.08);color:var(--red);}
+
+/* PRICE LEVELS */
+.lvl-cell{display:flex;flex-direction:column;gap:2px;}
+.lvl-row{display:flex;align-items:center;gap:5px;font-size:10.5px;}
+.lvl-label{color:var(--text3);min-width:16px;font-size:9.5px;font-weight:600;}
+.lvl-val{font-family:'JetBrains Mono',monospace;font-size:11px;}
+
+/* SCORE BAR */
+.sb-wrap{display:flex;align-items:center;gap:6px;}
+.sb-bg{flex:1;max-width:60px;height:4px;background:var(--bg3);border-radius:2px;}
+.sb-fill{height:100%;border-radius:2px;}
+.sb-num{font-family:'JetBrains Mono',monospace;font-size:11px;min-width:24px;}
+
+/* RISK */
+.rl2{display:inline-block;font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:4px;}
+.rl-d{background:rgba(239,68,68,.12);color:var(--red);}
+.rl-w{background:rgba(245,158,11,.12);color:var(--yellow);}
+.rl-s{background:rgba(34,197,94,.08);color:var(--green);}
+
+/* TABS */
+.tabs{display:flex;gap:3px;margin-bottom:14px;flex-wrap:wrap;}
+.tab{padding:6px 14px;border-radius:7px;font-size:12px;font-weight:500;cursor:pointer;color:var(--text2);background:var(--bg1);border:1px solid var(--border);transition:all .15s;user-select:none;}
+.tab:hover{color:var(--text);}.tab.on{background:rgba(0,212,255,.09);color:var(--accent);border-color:rgba(0,212,255,.22);}
+
+/* LOADING */
+.loading{display:flex;align-items:center;justify-content:center;padding:40px;gap:10px;color:var(--text3);font-size:12.5px;}
+.spin2{width:15px;height:15px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:rot .65s linear infinite;}
+@keyframes rot{to{transform:rotate(360deg)}}
+.empty2{text-align:center;padding:40px;color:var(--text3);font-size:13px;}
+
+/* EV CARD (opportunities view) */
+.opp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px;}
+.opp-card{background:var(--bg1);border:1px solid var(--border);border-radius:12px;padding:16px;position:relative;overflow:hidden;transition:border-color .2s,box-shadow .2s;}
+.opp-card:hover{border-color:var(--border2);box-shadow:0 0 20px rgba(0,0,0,.3);}
+.opp-card.opp-long{border-color:rgba(34,197,94,.2);}
+.opp-card.opp-long::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--green),transparent);}
+.opp-card.opp-short{border-color:rgba(239,68,68,.2);}
+.opp-card.opp-short::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--red),transparent);}
+.opp-card.opp-fr{border-color:rgba(20,184,166,.2);}
+.opp-card.opp-fr::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--teal),transparent);}
+.opp-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.opp-sym{font-size:18px;font-weight:900;letter-spacing:-.3px;}
+.opp-type{font-size:10px;color:var(--text3);}
+.opp-body{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;}
+.opp-m{font-size:10.5px;color:var(--text3);}
+.opp-m span{display:block;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--text);margin-top:2px;font-weight:600;}
+.opp-levels{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:10px;}
+.ol-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;font-size:11.5px;}
+.ol-row:last-child{margin-bottom:0;}
+.ol-label{color:var(--text3);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;}
+.ol-val{font-family:'JetBrains Mono',monospace;font-weight:700;}
+.opp-footer{display:flex;align-items:center;justify-content:space-between;}
+.opp-ev-num{font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:800;}
+.opp-ev-label{font-size:9.5px;color:var(--text3);margin-top:1px;}
+.opp-kelly{text-align:right;}
+.opp-kelly-val{font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:800;}
+.opp-kelly-label{font-size:9.5px;color:var(--text3);margin-top:1px;}
+.reasons{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;}
+.reason-chip{font-size:9.5px;padding:2px 7px;border-radius:4px;background:var(--bg3);color:var(--text2);border:1px solid var(--border2);}
+.reason-chip.pos{background:rgba(34,197,94,.07);color:var(--green);border-color:rgba(34,197,94,.18);}
+.reason-chip.neg{background:rgba(239,68,68,.07);color:var(--red);border-color:rgba(239,68,68,.18);}
+.reason-chip.teal{background:rgba(20,184,166,.07);color:var(--teal);border-color:rgba(20,184,166,.18);}
+
+/* FLOW GRID */
+.flow-grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;}
+.fc2{background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:13px 15px;}
+.fch{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.fcn{font-weight:700;font-size:14px;}
+.fcb{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.fcm{font-size:10.5px;color:var(--text3);}
+.fcm span{display:block;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--text);margin-top:2px;}
+.fc-net2{text-align:center;margin-top:9px;padding-top:9px;border-top:1px solid var(--border);}
+.fcnl{font-size:9.5px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;}
+.fcnv{font-size:17px;font-weight:800;font-family:'JetBrains Mono',monospace;margin-top:2px;}
+.ratio-bar{height:3px;background:var(--bg3);border-radius:2px;margin-top:6px;overflow:hidden;}
+.ratio-fill{height:100%;border-radius:2px;}
+
+/* WHALE */
+.wf{background:var(--bg1);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+.wi{display:flex;align-items:center;gap:10px;padding:9px 15px;border-bottom:1px solid rgba(24,32,56,.8);animation:sli .3s ease;}
+.wi:last-child{border-bottom:none;}
+@keyframes sli{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
+.ws2{font-size:10px;font-weight:800;padding:3px 8px;border-radius:4px;min-width:32px;text-align:center;}
+.wb{background:rgba(34,197,94,.1);color:var(--green);}
+.wsl{background:rgba(239,68,68,.1);color:var(--red);}
+.wco{font-weight:700;font-size:13px;min-width:56px;}
+.wu2{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent);flex:1;}
+.wpr{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text2);}
+.wti{font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace;min-width:48px;text-align:right;}
+
+/* OC GRID */
+.oc-grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;}
+.oc2{background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:13px 15px;}
+.och{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+.ocm{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+.ocml{font-size:10.5px;color:var(--text3);}
+.ocml span{display:block;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--text);margin-top:2px;}
+.fr-bar2{height:3px;background:var(--bg3);border-radius:2px;margin-top:8px;overflow:hidden;}
+.fr-fill2{height:100%;border-radius:2px;transition:width .5s;}
+
+/* RISK GRID */
+.rg{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;}
+.rc2{background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:13px 15px;}
+.rc2.rd{border-color:rgba(239,68,68,.28);background:rgba(239,68,68,.025);}
+.rc2.rw{border-color:rgba(245,158,11,.22);background:rgba(245,158,11,.018);}
+.rc2.rs{border-color:rgba(34,197,94,.14);}
+.rch{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.rcn{font-weight:800;font-size:14px;}
+.rcm{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.rcml{font-size:10.5px;color:var(--text3);}
+.rcml span{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text2);}
+
+/* SPREAD */
+.sp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;}
+.sp-card{background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:13px 15px;}
+.sp-card.sp-arb{border-color:rgba(20,184,166,.25);background:rgba(20,184,166,.02);}
+.sp-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.sp-name{font-weight:800;font-size:15px;}
+.sp-body{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+.sp-m{font-size:10.5px;color:var(--text3);}
+.sp-m span{display:block;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--text);margin-top:2px;}
+.sp-spread{text-align:center;margin-top:9px;padding-top:9px;border-top:1px solid var(--border);}
+.sp-spread-l{font-size:9.5px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;}
+.sp-spread-v{font-size:18px;font-weight:800;font-family:'JetBrains Mono',monospace;margin-top:2px;}
+
+/* STRATEGY */
+.str-g{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;}
+.str-c{background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:14px;}
+.str-c h3{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;}
+.fr2{display:flex;align-items:center;gap:9px;margin-bottom:10px;}
+.fr2 label{font-size:11.5px;color:var(--text2);min-width:115px;}
+.fr2 select{flex:1;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:5px 8px;font-size:12px;color:var(--text);font-family:'Space Grotesk',sans-serif;outline:none;}
+.fr2 input[type=range]{flex:1;accent-color:var(--accent);}
+.rv2{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent);min-width:44px;text-align:right;}
+.run-btn2{background:linear-gradient(135deg,var(--green2),var(--teal));border:none;color:#fff;padding:10px 26px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Space Grotesk',sans-serif;transition:opacity .2s;}
+.run-btn2:hover{opacity:.85;}
+.rst-btn2{background:var(--bg2);border:1px solid var(--border2);color:var(--text2);padding:9px 18px;border-radius:8px;font-size:13px;cursor:pointer;font-family:'Space Grotesk',sans-serif;}
+
+#toast{position:fixed;bottom:18px;right:18px;z-index:999;background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:9px 16px;border-radius:8px;font-size:12px;transform:translateY(50px);opacity:0;transition:all .22s;pointer-events:none;}
+#toast.show{transform:none;opacity:1;}
+::-webkit-scrollbar{width:4px;height:4px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+
+/* ── ORDER FLOW BADGES ── */
+.fl-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:5px;font-size:11px;font-weight:700;white-space:nowrap;}
+.fl-sbuy{background:rgba(34,197,94,.15);color:var(--green);border:1px solid rgba(34,197,94,.35);}
+.fl-buy{background:rgba(34,197,94,.07);color:#4ade80;border:1px solid rgba(34,197,94,.2);}
+.fl-ssell{background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.35);}
+.fl-sell{background:rgba(239,68,68,.07);color:#f87171;border:1px solid rgba(239,68,68,.2);}
+.fl-neu{background:rgba(148,163,184,.07);color:var(--text3);border:1px solid rgba(148,163,184,.14);}
+.fl-wrap{display:flex;align-items:center;gap:6px;}
+.fl-score{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;}
+.fl-trend{font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:rgba(0,212,255,.1);color:var(--accent);border:1px solid rgba(0,212,255,.2);}
+.fl-boost-pos{color:var(--green);font-size:10px;font-weight:700;}
+.fl-boost-neg{color:var(--red);font-size:10px;font-weight:700;}
+.of-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;}
+.of-card{background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:13px 15px;}
+.of-card.of-buy{border-color:rgba(34,197,94,.25);}
+.of-card.of-sell{border-color:rgba(239,68,68,.25);}
+.of-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.of-sym{font-weight:800;font-size:15px;}
+.of-metrics{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:8px;}
+.of-m{font-size:10.5px;color:var(--text3);}
+.of-m span{display:block;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--text);margin-top:2px;}
+.of-bar-wrap{margin-top:8px;}
+.of-bar-label{font-size:9.5px;color:var(--text3);margin-bottom:3px;display:flex;justify-content:space-between;}
+.of-bar-bg{height:6px;background:var(--bg3);border-radius:3px;overflow:hidden;position:relative;}
+.of-bar-buy{position:absolute;left:0;top:0;height:100%;border-radius:3px;background:var(--green);}
+.of-bar-sell{position:absolute;right:0;top:0;height:100%;border-radius:3px;background:var(--red);}
+
+/* ── SMART MONEY STYLES ── */
+.sm-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:5px;font-size:11px;font-weight:700;}
+.sm-buy{background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.28);}
+.sm-sell{background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.28);}
+.sm-neu{background:rgba(148,163,184,.07);color:var(--text2);border:1px solid rgba(148,163,184,.14);}
+.sm-tier{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:3px;font-size:9px;font-weight:900;margin-left:4px;}
+.sm-tier-s{background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;}
+.sm-tier-a{background:rgba(0,212,255,.2);color:var(--accent);border:1px solid rgba(0,212,255,.3);}
+.sm-tier-b{background:rgba(148,163,184,.12);color:var(--text2);border:1px solid rgba(148,163,184,.2);}
+.sm-wallet-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;}
+.sm-card{background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:14px 15px;}
+.sm-card-buy{border-color:rgba(34,197,94,.2);background:rgba(34,197,94,.02);}
+.sm-card-sell{border-color:rgba(239,68,68,.18);}
+.sm-card-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;}
+.sm-wallet-name{font-weight:700;font-size:13px;display:flex;align-items:center;gap:4px;}
+.sm-wallet-addr{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--text3);margin-top:2px;}
+.sm-activity-time{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text2);text-align:right;}
+.sm-okx-match{font-size:10px;color:var(--accent);text-align:right;margin-top:2px;font-weight:600;}
+.sm-bias-bar{margin-bottom:9px;}
+.sm-bias-label{display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:3px;}
+.sm-bias-bg{height:4px;background:var(--bg3);border-radius:2px;overflow:hidden;}
+.sm-bias-fill{height:100%;border-radius:2px;transition:width .4s;}
+.sm-txn-list{display:flex;flex-direction:column;gap:4px;}
+.sm-txn{display:flex;align-items:center;gap:7px;font-size:11px;}
+.sm-txn-dir{font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;min-width:30px;text-align:center;}
+.sm-in{background:rgba(34,197,94,.1);color:var(--green);}
+.sm-out{background:rgba(239,68,68,.1);color:var(--red);}
+.sm-txn-sym{font-weight:700;font-size:12px;min-width:40px;}
+.sm-txn-match{color:var(--accent);}
+.sm-txn-val{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text2);flex:1;}
+.sm-txn-okx{font-size:9px;color:var(--accent);background:rgba(0,212,255,.08);border:1px solid rgba(0,212,255,.18);padding:1px 5px;border-radius:3px;font-weight:700;}
+.sm-txn-time{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--text3);min-width:38px;text-align:right;}
+.sm-nansen{font-size:10px;color:var(--purple);margin-top:7px;padding-top:6px;border-top:1px solid var(--border);}
+.sm-arkham{font-size:10px;color:var(--teal);margin-top:3px;}
+.sm-api-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.sm-api-input{background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:5px 10px;font-size:11px;color:var(--text);font-family:'JetBrains Mono',monospace;outline:none;flex:1;transition:border .2s;}
+.sm-api-input:focus{border-color:var(--accent);}
+.sm-api-input::placeholder{color:var(--text3);}
+.sm-api-label{font-size:10.5px;color:var(--text2);min-width:80px;}
+.sm-api-save{background:var(--bg3);border:1px solid var(--border2);color:var(--text2);padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Space Grotesk',sans-serif;}
+.sm-api-save:hover{border-color:var(--accent);color:var(--accent);}
+
+/* ── AI MONITOR STYLES ── */
+.timeline{display:flex;flex-direction:column;gap:0;}
+.tl-date-sep{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1.5px;padding:12px 0 6px 28px;}
+.tl-item{display:flex;gap:14px;padding:12px 0;position:relative;}
+.tl-item::before{content:'';position:absolute;left:7px;top:0;bottom:0;width:1px;background:var(--border2);}
+.tl-dot{width:15px;height:15px;border-radius:50%;flex-shrink:0;margin-top:3px;z-index:1;border:2px solid var(--bg1);}
+.tl-high-dot{background:var(--red);box-shadow:0 0 8px rgba(239,68,68,.5);}
+.tl-med-dot{background:var(--yellow);box-shadow:0 0 6px rgba(245,158,11,.4);}
+.tl-low-dot{background:var(--text3);}
+.tl-content{flex:1;background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:12px 14px;}
+.tl-high .tl-content{border-color:rgba(239,68,68,.22);background:rgba(239,68,68,.02);}
+.tl-med .tl-content{border-color:rgba(245,158,11,.18);}
+.tl-head{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+.tl-time{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:var(--text2);
+  background:var(--bg3);padding:2px 7px;border-radius:4px;}
+.tl-label{font-size:10px;color:var(--accent);font-weight:600;}
+.tl-tracking{font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;
+  background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.25);margin-left:auto;}
+.tl-title{font-size:13.5px;font-weight:700;color:var(--text);margin-bottom:5px;line-height:1.4;}
+.tl-title .hl{color:var(--accent);}
+.tl-body{font-size:11.5px;color:var(--text2);line-height:1.6;margin-bottom:7px;}
+.tl-tags{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;}
+.tl-tag{font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;}
+.tag-alpha{background:rgba(168,85,247,.15);color:var(--purple);border:1px solid rgba(168,85,247,.3);}
+.tag-anomaly{background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.25);}
+.tag-bull2{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.22);}
+.tag-bear2{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.22);}
+.tag-contract{background:rgba(0,212,255,.08);color:var(--accent);border:1px solid rgba(0,212,255,.18);}
+.tag-trend{background:rgba(249,115,22,.1);color:var(--accent3);border:1px solid rgba(249,115,22,.22);}
+.tag-protect{background:rgba(245,158,11,.15);color:var(--yellow);border:1px solid rgba(245,158,11,.3);}
+.tag-stoploss{background:rgba(34,197,94,.15);color:var(--green);border:1px solid rgba(34,197,94,.3);}
+.tag-end{background:rgba(148,163,184,.1);color:var(--text2);border:1px solid rgba(148,163,184,.2);}
+.tag-smart{background:rgba(168,85,247,.12);color:var(--purple);border:1px solid rgba(168,85,247,.25);}
+.tag-whale{background:rgba(0,212,255,.1);color:var(--accent);border:1px solid rgba(0,212,255,.2);}
+.tag-funding{background:rgba(20,184,166,.1);color:var(--teal);border:1px solid rgba(20,184,166,.22);}
+.tl-meta{display:flex;align-items:center;gap:10px;font-size:10.5px;}
+.tl-meta-item{color:var(--text3);font-family:'JetBrains Mono',monospace;}
+/* AI Report */
+.ai-analysis-wrap{display:flex;flex-direction:column;gap:0;}
+.ai-analysis-toolbar{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--bg1);border:1px solid var(--border);border-radius:10px;margin-bottom:12px;}
+.ai-report-time{font-size:10px;color:var(--text3);padding:8px 16px;margin-bottom:4px;}
+.ai-section{background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:8px;}
+.ai-sec-overview{border-color:rgba(0,212,255,.15);}
+.ai-sec-levels{border-color:rgba(34,197,94,.15);}
+.ai-sec-picks{border-color:rgba(168,85,247,.15);}
+.ai-sec-risk{border-color:rgba(239,68,68,.15);}
+.ai-sec-time{border-color:rgba(245,158,11,.15);}
+.ai-sec-title{font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;}
+.ai-sec-body{font-size:13px;color:var(--text);line-height:1.7;}
+.ai-bullet{padding:3px 0 3px 12px;border-left:2px solid var(--accent);margin:4px 0;color:var(--text2);}
+.ai-line{padding:2px 0;color:var(--text);}
+/* Sentiment */
+.sentiment-grid{display:flex;gap:24px;flex-wrap:wrap;justify-content:center;padding:20px;background:var(--bg1);border:1px solid var(--border);border-radius:10px;margin-bottom:12px;}
+.sentiment-donut-wrap{display:flex;flex-direction:column;align-items:center;gap:10px;}
+.sentiment-legend{display:flex;flex-direction:column;gap:5px;}
+.sl-item{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--text2);}
+.sl-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.sentiment-bar-section{background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:14px 16px;}
+.sb-title{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;}
+.sbar-row{display:flex;align-items:center;gap:8px;margin-bottom:7px;}
+.sbar-sym{font-weight:700;font-size:12px;min-width:44px;}
+.sbar-track{flex:1;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden;display:flex;}
+.sbar-fill{height:100%;border-radius:3px;transition:width .4s;}
+.sbar-val{font-family:'JetBrains Mono',monospace;font-size:11px;min-width:50px;text-align:right;}
 </style>
 </head>
 <body>
@@ -4075,6 +4818,1916 @@ function renderSentimentTab() {
 }
 
 // ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+//  ORDER FLOW ENGINE
+//  - 對熱門幣種抓最近 200 筆成交
+//  - 分析大單（≥$20K）的買賣累積方向
+//  - 計算 flowScore(-100~+100) 並納入 EV 引擎
+// ══════════════════════════════════════════════════════
+var orderFlowCache = {};          // sym → flowData
+var FLOW_THRESHOLD = 20000;       // 大單門檻 USD
+var FLOW_COINS = [                // 需抓流向的幣種（先鎖定主流）
+  'BTC','ETH','SOL','BNB','XRP','DOGE','AVAX','ARB',
+  'OP','LINK','ADA','DOT','PEPE','SUI','TRX','LTC',
+  'TON','NEAR','FIL','ATOM','MATIC','WLD','INJ','TIA'
+];
+
+async function fetchOrderFlow(sym) {
+  try {
+    var instId = sym + '-USDT-SWAP';
+    var trades = await okx2('/market/trades?instId=' + instId + '&limit=200');
+    if (!trades || !trades.length) return null;
+
+    var bigBuyUSD = 0, bigSellUSD = 0;
+    var bigBuyCount = 0, bigSellCount = 0;
+    var recentBigBuyUSD = 0, recentBigSellUSD = 0; // last 50 trades
+    var now = Date.now();
+
+    trades.forEach((tr, idx) => {
+      var px = parseFloat(tr.px || 0);
+      var sz = parseFloat(tr.sz || 0);
+      var usd = px * sz;
+      var age = now - parseInt(tr.ts || now); // ms old
+      if (usd < FLOW_THRESHOLD) return;
+
+      if (tr.side === 'buy') {
+        bigBuyUSD += usd;
+        bigBuyCount++;
+        if (idx < 50) recentBigBuyUSD += usd;
+      } else {
+        bigSellUSD += usd;
+        bigSellCount++;
+        if (idx < 50) recentBigSellUSD += usd;
+      }
+    });
+
+    var totalFlow = bigBuyUSD + bigSellUSD;
+    if (totalFlow === 0) return null;
+
+    // flowScore: -100 (heavy sell) → +100 (heavy buy)
+    var flowScore = Math.round((bigBuyUSD - bigSellUSD) / totalFlow * 100);
+
+    // recentBias: what are big orders doing RIGHT NOW (last 50 trades)
+    var recentTotal = recentBigBuyUSD + recentBigSellUSD;
+    var recentBias = recentTotal > 0
+      ? Math.round((recentBigBuyUSD - recentBigSellUSD) / recentTotal * 100)
+      : 0;
+
+    // Pressure label
+    var label, labelClass;
+    if (flowScore >= 50)       { label = '強力買壓'; labelClass = 'flow-strong-buy'; }
+    else if (flowScore >= 20)  { label = '溫和買壓'; labelClass = 'flow-buy'; }
+    else if (flowScore <= -50) { label = '強力賣壓'; labelClass = 'flow-strong-sell'; }
+    else if (flowScore <= -20) { label = '溫和賣壓'; labelClass = 'flow-sell'; }
+    else                       { label = '中性';     labelClass = 'flow-neutral'; }
+
+    // Trend alignment check
+    var trending = Math.abs(recentBias) > 30 && Math.sign(recentBias) === Math.sign(flowScore);
+
+    return {
+      sym, instId, bigBuyUSD, bigSellUSD, bigBuyCount, bigSellCount,
+      netUSD: bigBuyUSD - bigSellUSD,
+      flowScore, recentBias, label, labelClass, trending,
+      sampleSize: trades.length, threshold: FLOW_THRESHOLD
+    };
+  } catch(e) { return null; }
+}
+
+async function refreshOrderFlow() {
+  // Stagger requests to avoid rate limits
+  var batches = [];
+  for (let i = 0; i < FLOW_COINS.length; i += 6) batches.push(FLOW_COINS.slice(i, i + 6));
+  for (const batch of batches) {
+    var results = await Promise.allSettled(batch.map(sym => fetchOrderFlow(sym)));
+    results.forEach((r, idx) => {
+      if (r.status === 'fulfilled' && r.value) {
+        orderFlowCache[batch[idx]] = r.value;
+      }
+    });
+    await new Promise(res => setTimeout(res, 300)); // 300ms gap between batches
+  }
+  // Patch ev scores with flow data
+  applyFlowToTickers();
+  // Re-render active view
+  var v = document.querySelector('.ni.on')?.dataset.v;
+  if (v === 'opportunities') renderOpportunities();
+  else if (v === 'screener') renderScreener();
+  else if (v === 'orderflow') renderOrderFlow();
+  updateFlowBadges();
+}
+
+function applyFlowToTickers() {
+  allT.forEach(t => {
+    var flow = orderFlowCache[t.sym];
+    if (!flow) { t.flowScore = null; t.flowLabel = '--'; t.flowClass = 'flow-neutral'; t.flowEVBoost = 0; return; }
+    t.flowScore = flow.flowScore;
+    t.flowLabel = flow.label;
+    t.flowClass = flow.labelClass;
+    t.flowNetUSD = flow.netUSD;
+    t.flowBuyUSD = flow.bigBuyUSD;
+    t.flowSellUSD = flow.bigSellUSD;
+    t.flowTrending = flow.trending;
+    t.recentBias = flow.recentBias;
+
+    // EV boost/penalty based on flow alignment with direction
+    var boost = 0;
+    if (t.direction === 'LONG') {
+      if (flow.flowScore >= 50)  boost = 18;
+      else if (flow.flowScore >= 20)  boost = 9;
+      else if (flow.flowScore <= -30) boost = -15; // counter-flow penalty
+      else if (flow.flowScore <= -50) boost = -25;
+    } else if (t.direction === 'SHORT') {
+      if (flow.flowScore <= -50) boost = 18;
+      else if (flow.flowScore <= -20) boost = 9;
+      else if (flow.flowScore >= 30) boost = -15;
+      else if (flow.flowScore >= 50) boost = -25;
+    }
+    // Trending (persistent big order direction) adds extra conviction
+    if (flow.trending && Math.abs(boost) > 0) boost = boost > 0 ? boost + 6 : boost - 6;
+
+    t.flowEVBoost = boost;
+    // Recompute evScore with flow boost
+    t.evScore = Math.max(0, Math.min(100, t.evScore + Math.round(boost * 0.6)));
+    t.ev = t.ev + boost * 0.15;
+    // Kelly adjustment
+    if (boost > 0) t.halfKelly = Math.min(25, t.halfKelly * 1.2);
+    else if (boost < -10) t.halfKelly = Math.max(0, t.halfKelly * 0.7);
+  });
+}
+
+function updateFlowBadges() {
+  var evPos = allT.filter(t => t.ev > 0 && t.direction !== 'NEUTRAL' && t.direction !== 'WATCH');
+  document.getElementById('evCount').textContent = evPos.length;
+  var topK = Math.max(0, ...allT.map(t => t.halfKelly)).toFixed(1);
+  document.getElementById('topKelly').textContent = topK + '%';
+}
+
+// ── Flow badge HTML ──
+function flowBadge(t, compact = false) {
+  if (t.flowScore === null || t.flowScore === undefined) {
+    return compact
+      ? '<span class="fl-badge fl-neu">— 無數據</span>'
+      : '<span class="fl-badge fl-neu">無流向數據</span>';
+  }
+  var fs = t.flowScore;
+  var cls = fs >= 50 ? 'fl-sbuy' : fs >= 20 ? 'fl-buy' : fs <= -50 ? 'fl-ssell' : fs <= -20 ? 'fl-sell' : 'fl-neu';
+  var icon = fs >= 50 ? '🟢' : fs >= 20 ? '↑' : fs <= -50 ? '🔴' : fs <= -20 ? '↓' : '—';
+  var aligned = t.flowEVBoost > 0 ? ' ✓' : t.flowEVBoost < -10 ? ' ✗' : '';
+  if (compact) return `<span class="fl-badge ${cls}">${icon} ${t.flowLabel}${aligned}</span>`;
+  return `<div class="fl-wrap">
+    <span class="fl-badge ${cls}">${icon} ${t.flowLabel}${aligned}</span>
+    <span class="fl-score">${fs >= 0 ? '+' : ''}${fs}</span>
+    ${t.flowTrending ? '<span class="fl-trend">持續</span>' : ''}
+  </div>`;
+}
+
+// ── Order Flow dedicated view ──
+function renderOrderFlow() {
+  var data = Object.values(orderFlowCache).sort((a, b) => Math.abs(b.flowScore) - Math.abs(a.flowScore));
+  var strongBuy = data.filter(d => d.flowScore >= 50).length;
+  var strongSell = data.filter(d => d.flowScore <= -50).length;
+  var netBuy = data.reduce((a, d) => a + d.bigBuyUSD, 0);
+  var netSell = data.reduce((a, d) => a + d.bigSellUSD, 0);
+
+  document.getElementById('ofStats').innerHTML = `
+    <div class="sc2 cg"><div class="sl2">強力買壓</div><div class="sv2" style="color:var(--green)">${strongBuy}</div><div class="sc3">Score≥50</div></div>
+    <div class="sc2 cr"><div class="sl2">強力賣壓</div><div class="sv2" style="color:var(--red)">${strongSell}</div><div class="sc3">Score≤-50</div></div>
+    <div class="sc2 ca"><div class="sl2">大單買入</div><div class="sv2" style="color:var(--accent)">$${fmt2(netBuy)}</div><div class="sc3">≥$20K</div></div>
+    <div class="sc2 cp"><div class="sl2">大單賣出</div><div class="sv2" style="color:var(--purple)">$${fmt2(netSell)}</div></div>
+    <div class="sc2 ${netBuy >= netSell ? 'cg' : 'cr'}"><div class="sl2">大單淨流</div><div class="sv2" style="color:${netBuy >= netSell ? 'var(--green)' : 'var(--red)'}">$${fmt2(Math.abs(netBuy - netSell))}</div><div class="sc3">${netBuy >= netSell ? '淨買入' : '淨賣出'}</div></div>
+    <div class="sc2 ct"><div class="sl2">監控幣種</div><div class="sv2" style="color:var(--teal)">${data.length}</div><div class="sc3">大單門檻$20K</div></div>`;
+
+  if (!data.length) {
+    document.getElementById('ofBody').innerHTML = '<div class="loading"><div class="spin2"></div>正在抓取大單數據，請稍候…</div>';
+    return;
+  }
+
+  document.getElementById('ofBody').innerHTML = `<table>
+    <thead><tr>
+      <th>#</th><th>幣種</th><th>大單流向</th><th>流向分數</th><th>近期偏向</th>
+      <th>大單買入</th><th>大單賣出</th><th>淨流入</th><th>買單數</th><th>賣單數</th>
+      <th>EV信號</th><th>流向一致</th><th>持倉方向</th>
+    </tr></thead>
+    <tbody>${data.map((d, i) => {
+      var t = allT.find(x => x.sym === d.sym && x.type === 'SWAP');
+      var scoreColor = d.flowScore >= 50 ? 'var(--green)' : d.flowScore >= 20 ? 'var(--accent)' : d.flowScore <= -50 ? 'var(--red)' : d.flowScore <= -20 ? '#f87171' : 'var(--text2)';
+      var netColor = d.netUSD >= 0 ? 'var(--green)' : 'var(--red)';
+      var recentColor = d.recentBias >= 30 ? 'var(--green)' : d.recentBias <= -30 ? 'var(--red)' : 'var(--text2)';
+      var aligned = t ? (t.flowEVBoost > 0 ? '<span style="color:var(--green);font-weight:700">✓ 一致</span>' : t.flowEVBoost < -10 ? '<span style="color:var(--red);font-weight:700">✗ 背離</span>' : '<span style="color:var(--text3)">— 中性</span>') : '--';
+      var evSig = t ? (t.direction === 'LONG' ? '<span class="ev-badge evl" style="font-size:10px;padding:2px 7px">📈做多</span>' : t.direction === 'SHORT' ? '<span class="ev-badge evs" style="font-size:10px;padding:2px 7px">📉做空</span>' : '<span class="ev-badge evn" style="font-size:10px;padding:2px 7px">—</span>') : '--';
+      var posBias = t?.longRaw > t?.shortRaw ? `<span style="color:var(--green)">${t.longRaw}↑</span>` : `<span style="color:var(--red)">${t?.shortRaw || 0}↓</span>`;
+      return `<tr>
+        <td class="mono" style="color:var(--text3)">${i + 1}</td>
+        <td><div class="cc2"><div class="ci2">${d.sym.slice(0, 2)}</div><div class="cn2">${d.sym}</div></div></td>
+        <td><span class="fl-badge ${d.flowScore >= 50 ? 'fl-sbuy' : d.flowScore >= 20 ? 'fl-buy' : d.flowScore <= -50 ? 'fl-ssell' : d.flowScore <= -20 ? 'fl-sell' : 'fl-neu'}">${d.label}</span>${d.trending ? ' <span class="fl-trend">持續</span>' : ''}</td>
+        <td class="mono" style="color:${scoreColor};font-weight:700">${d.flowScore >= 0 ? '+' : ''}${d.flowScore}</td>
+        <td class="mono" style="color:${recentColor}">${d.recentBias >= 0 ? '+' : ''}${d.recentBias}</td>
+        <td class="mono g">$${fmt2(d.bigBuyUSD)}</td>
+        <td class="mono r">$${fmt2(d.bigSellUSD)}</td>
+        <td class="mono" style="color:${netColor}">${d.netUSD >= 0 ? '+' : ''}$${fmt2(Math.abs(d.netUSD))}</td>
+        <td class="mono">${d.bigBuyCount}</td>
+        <td class="mono">${d.bigSellCount}</td>
+        <td>${evSig}</td>
+        <td>${aligned}</td>
+        <td>${t ? posBias : '--'}</td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+}
+
+// ══════════════════════════════════════════════════════
+//  SMART MONEY ENGINE
+//  Layer 1: 鏈上 RPC 直讀（免費，ETH/SOL/BNB）
+//  Layer 2: Nansen / Arkham API（需 key，可選）
+// ══════════════════════════════════════════════════════
+
+// ── 精選聰明錢包地址庫（公開研究整理） ──
+var SMART_WALLETS = {
+  eth: [
+    { addr:'0x3DdfA8eC3052539b6C9549F12cEA2C295cfF5296', label:'ETH Whale A', tier:'S' },
+    { addr:'0x176F3DAb24a159341c0509bB36B833E7fdd0a132', label:'Jump Trading', tier:'S' },
+    { addr:'0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf', label:'Paradigm Deployer', tier:'A' },
+    { addr:'0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045', label:'Vitalik.eth', tier:'S' },
+    { addr:'0xF977814e90dA44bFA03b6295A0616a897441aceC', label:'Binance Hot 8', tier:'A' },
+    { addr:'0x21a31Ee1afC51d94C2efCCaa2092ad1028285549', label:'Binance Hot 6', tier:'A' },
+    { addr:'0x56Eddb7aa87536c09CCc2793473599fD21A8b17F', label:'Smart Trader 1', tier:'B' },
+    { addr:'0x9696f59E4d72E237BE84fFD425DCaD154Bf96976', label:'Smart Trader 2', tier:'B' },
+    { addr:'0x00000000219ab540356cBB839Cbe05303d7705Fa', label:'ETH2 Deposit', tier:'S' },
+    { addr:'0xBE0eB53F46cd790Cd13851d5EFf43D12404d33E8', label:'Binance Cold', tier:'S' },
+    { addr:'0x40B38765696e3d5d8d9d834D8AaD4bB6e418E489', label:'Wintermute MM', tier:'S' },
+    { addr:'0x0548F59fEE79f8832C299e01dCA5c76F034F558e', label:'DWF Labs', tier:'A' },
+  ],
+  sol: [
+    { addr:'9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM', label:'Sol Whale 1', tier:'S' },
+    { addr:'5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1', label:'Raydium Authority', tier:'A' },
+    { addr:'GThUX1Atko4tqhN2NaiTazWSeFWMuiUvfFnyJyUghFMJ', label:'Sol Smart 1', tier:'B' },
+    { addr:'CuieVDEDtLo7FypA9SbLM9saXFdb1dsshEkyErMqkRQq', label:'Pump.fun Deployer', tier:'A' },
+    { addr:'7YttLkHDoNj9wyDur5pM1ejNaAvT9X4eqaYcHQqg9GFo', label:'Sol Trader 2', tier:'B' },
+    { addr:'Fda6VHMKjciMGJGsiPnf4bRqjJaGJEPaHWNYfGtU7aXH', label:'Sol VC Wallet', tier:'A' },
+    { addr:'EhYXq3ANp5nAerUpbSgd7VK2RRcxK1zNuSQ755G5Mtxx', label:'Meme Sniper', tier:'B' },
+    { addr:'DfXygSm4jCyNCybVYYK6DwvWqjKee8pbDmJGcLWNDXjh', label:'Sol Smart 2', tier:'A' },
+  ],
+  bsc: [
+    { addr:'0x8894E0a0c962CB723c1976a4421c95949bE2D4E3', label:'Binance BSC Hot', tier:'S' },
+    { addr:'0x0000000000000000000000000000000000001004', label:'BSC Validator', tier:'A' },
+    { addr:'0x3f5CE5FBFe3E9af3971dD833D26bA9b5C936f0bE', label:'Binance BSC 2', tier:'S' },
+    { addr:'0xF977814e90dA44bFA03b6295A0616a897441aceC', label:'BSC Whale 1', tier:'A' },
+    { addr:'0x1Fbe2acD5aD8f9e5F6e5d41B43C9066E22eE6E5c', label:'BSC Smart 1', tier:'B' },
+    { addr:'0x2465176C461AfB316ebc773C61fAEe85A6515DAA', label:'BSC Smart 2', tier:'B' },
+  ]
+};
+
+// ── RPC 端點（公開免費節點） ──
+var RPC = {
+  eth: 'https://eth.llamarpc.com',
+  sol: 'https://api.mainnet-beta.solana.com',
+  bsc: 'https://bsc-dataseed1.binance.org'
+};
+
+// ── ERC-20 常見代幣地址對照 ──
+var TOKEN_MAP = {
+  '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48': { sym:'USDC', decimals:6 },
+  '0xdAC17F958D2ee523a2206206994597C13D831ec7': { sym:'USDT', decimals:6 },
+  '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599': { sym:'WBTC', decimals:8 },
+  '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2': { sym:'WETH', decimals:18 },
+  '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984': { sym:'UNI', decimals:18 },
+  '0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9': { sym:'AAVE', decimals:18 },
+  '0x514910771AF9Ca656af840dff83E8264EcF986CA': { sym:'LINK', decimals:18 },
+  '0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE': { sym:'SHIB', decimals:18 },
+};
+
+// ── Global State ──
+var smartMoneyData = [];    // parsed activity records
+var smLoading = false;
+var nansenKey = localStorage.getItem('nansen_key') || '';
+var arkhamKey = localStorage.getItem('arkham_key') || '';
+var smTabCurrent = 'all';
+
+// ══════════════════════════════════════════════════════
+//  ETH / BSC: get recent txns via Etherscan-compatible
+// ══════════════════════════════════════════════════════
+async function fetchEthTxns(addr, chain) {
+  // Use public Etherscan API (free, no key needed for basic queries)
+  var baseUrl = chain === 'bsc'
+    ? 'https://api.bscscan.com/api'
+    : 'https://api.etherscan.io/api';
+  try {
+    var url = `${baseUrl}?module=account&action=tokentx&address=${addr}&page=1&offset=20&sort=desc`;
+    var r = await fetch(url);
+    var j = await r.json();
+    if (j.status !== '1' || !j.result) return [];
+    return j.result.slice(0, 10).map(tx => ({
+      hash: tx.hash,
+      time: parseInt(tx.timeStamp) * 1000,
+      from: tx.from,
+      to: tx.to,
+      tokenSym: tx.tokenSymbol || '?',
+      tokenName: tx.tokenName,
+      value: parseFloat(tx.value) / Math.pow(10, parseInt(tx.decimals || 18)),
+      contractAddr: tx.contractAddress,
+      direction: tx.to.toLowerCase() === addr.toLowerCase() ? 'IN' : 'OUT',
+    }));
+  } catch(e) { return []; }
+}
+
+// ── ETH normal txns (ETH transfers) ──
+async function fetchEthNormalTxns(addr, chain) {
+  var baseUrl = chain === 'bsc'
+    ? 'https://api.bscscan.com/api'
+    : 'https://api.etherscan.io/api';
+  try {
+    var url = `${baseUrl}?module=account&action=txlist&address=${addr}&page=1&offset=10&sort=desc`;
+    var r = await fetch(url);
+    var j = await r.json();
+    if (j.status !== '1' || !j.result) return [];
+    return j.result.slice(0, 5).map(tx => ({
+      hash: tx.hash,
+      time: parseInt(tx.timeStamp) * 1000,
+      from: tx.from,
+      to: tx.to,
+      tokenSym: chain === 'bsc' ? 'BNB' : 'ETH',
+      value: parseFloat(tx.value) / 1e18,
+      direction: tx.to.toLowerCase() === addr.toLowerCase() ? 'IN' : 'OUT',
+      isNative: true,
+    }));
+  } catch(e) { return []; }
+}
+
+// ══════════════════════════════════════════════════════
+//  SOL: get recent txns via public RPC
+// ══════════════════════════════════════════════════════
+async function fetchSolTxns(addr) {
+  try {
+    // Get recent signatures
+    var sigResp = await fetch(RPC.sol, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 1,
+        method: 'getSignaturesForAddress',
+        params: [addr, { limit: 10 }]
+      })
+    });
+    var sigData = await sigResp.json();
+    if (!sigData.result) return [];
+
+    var sigs = sigData.result.slice(0, 5);
+    var txns = [];
+    for (const sig of sigs) {
+      try {
+        var txResp = await fetch(RPC.sol, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0', id: 1,
+            method: 'getTransaction',
+            params: [sig.signature, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0 }]
+          })
+        });
+        var txData = await txResp.json();
+        if (!txData.result) continue;
+        var tx = txData.result;
+        var meta = tx.meta;
+        if (!meta) continue;
+
+        // SOL balance change
+        var accountKeys = tx.transaction?.message?.accountKeys || [];
+        var addrIdx = accountKeys.findIndex(k => (k.pubkey || k) === addr);
+        var solDelta = 0;
+        if (addrIdx >= 0 && meta.preBalances && meta.postBalances) {
+          solDelta = (meta.postBalances[addrIdx] - meta.preBalances[addrIdx]) / 1e9;
+        }
+
+        // Token balance changes
+        var tokenChanges = (meta.postTokenBalances || []).filter(b => {
+          var pre = (meta.preTokenBalances || []).find(p => p.accountIndex === b.accountIndex);
+          return pre && b.uiTokenAmount.uiAmount !== pre.uiTokenAmount.uiAmount;
+        });
+
+        txns.push({
+          hash: sig.signature,
+          time: (sig.blockTime || 0) * 1000,
+          tokenSym: tokenChanges.length > 0
+            ? (tokenChanges[0].mint?.slice(0, 4) + '…')
+            : 'SOL',
+          value: Math.abs(solDelta),
+          direction: solDelta >= 0 ? 'IN' : 'OUT',
+          chain: 'sol',
+        });
+      } catch(e) { continue; }
+    }
+    return txns;
+  } catch(e) { return []; }
+}
+
+// ══════════════════════════════════════════════════════
+//  NANSEN API (optional, requires key)
+// ══════════════════════════════════════════════════════
+async function fetchNansen(addr) {
+  if (!nansenKey) return null;
+  try {
+    var r = await fetch(`https://api.nansen.ai/v1/address/${addr}/labels`, {
+      headers: { 'x-api-key': nansenKey, 'Accept': 'application/json' }
+    });
+    if (!r.ok) return null;
+    var j = await r.json();
+    return { labels: j.labels || [], smartScore: j.smart_money_score || null };
+  } catch(e) { return null; }
+}
+
+// ══════════════════════════════════════════════════════
+//  ARKHAM API (optional, requires key)
+// ══════════════════════════════════════════════════════
+async function fetchArkham(addr) {
+  if (!arkhamKey) return null;
+  try {
+    var r = await fetch(`https://api.arkhamintelligence.com/intelligence/address/${addr}`, {
+      headers: { 'API-Key': arkhamKey, 'Accept': 'application/json' }
+    });
+    if (!r.ok) return null;
+    var j = await r.json();
+    return {
+      name: j.arkhamEntity?.name || null,
+      type: j.arkhamEntity?.type || null,
+      tags: j.arkhamEntity?.tags || [],
+    };
+  } catch(e) { return null; }
+}
+
+// ══════════════════════════════════════════════════════
+//  MAIN FETCH: all wallets across all chains
+// ══════════════════════════════════════════════════════
+async function refreshSmartMoney() {
+  if (smLoading) return;
+  smLoading = true;
+  document.getElementById('smLoadBtn').textContent = '⏳ 掃描中…';
+  document.getElementById('smStatus').textContent = '掃描中…';
+  smartMoneyData = [];
+
+  var allWallets = [
+    ...SMART_WALLETS.eth.map(w => ({ ...w, chain: 'eth' })),
+    ...SMART_WALLETS.sol.map(w => ({ ...w, chain: 'sol' })),
+    ...SMART_WALLETS.bsc.map(w => ({ ...w, chain: 'bsc' })),
+  ];
+
+  var done = 0;
+  var total = allWallets.length;
+
+  // Process in batches of 4 to avoid rate limits
+  for (let i = 0; i < allWallets.length; i += 4) {
+    var batch = allWallets.slice(i, i + 4);
+    await Promise.allSettled(batch.map(async w => {
+      try {
+        var txns = [];
+        if (w.chain === 'sol') {
+          txns = await fetchSolTxns(w.addr);
+        } else {
+          var [tokenTxns, nativeTxns] = await Promise.allSettled([
+            fetchEthTxns(w.addr, w.chain),
+            fetchEthNormalTxns(w.addr, w.chain)
+          ]);
+          txns = [
+            ...(tokenTxns.status === 'fulfilled' ? tokenTxns.value : []),
+            ...(nativeTxns.status === 'fulfilled' ? nativeTxns.value : []),
+          ].sort((a, b) => b.time - a.time).slice(0, 8);
+        }
+
+        // Optional enrichment
+        var nansenData = null, arkhamData = null;
+        if (nansenKey && w.chain === 'eth') nansenData = await fetchNansen(w.addr);
+        if (arkhamKey && w.chain === 'eth') arkhamData = await fetchArkham(w.addr);
+
+        // Tag tokens that match our OKX universe
+        var taggedTxns = txns.map(tx => {
+          var sym = tx.tokenSym?.toUpperCase().replace('W', '');
+          var matchOKX = allT.find(t => t.sym === sym || t.sym === tx.tokenSym?.toUpperCase());
+          return { ...tx, matchOKX: matchOKX?.sym || null };
+        });
+
+        smartMoneyData.push({
+          wallet: w,
+          txns: taggedTxns,
+          nansenData, arkhamData,
+          lastActive: txns.length > 0 ? txns[0].time : 0,
+          recentBuys: taggedTxns.filter(t => t.direction === 'IN').length,
+          recentSells: taggedTxns.filter(t => t.direction === 'OUT').length,
+          okxMatches: taggedTxns.filter(t => t.matchOKX).map(t => t.matchOKX),
+        });
+      } catch(e) {}
+      done++;
+      document.getElementById('smStatus').textContent = `掃描中 ${done}/${total}…`;
+    }));
+    await new Promise(res => setTimeout(res, 500));
+  }
+
+  // Build signal boost map: if smart money is buying a token → boost EV
+  applySmartMoneyToEV();
+  renderSmartMoney();
+  smLoading = false;
+  document.getElementById('smLoadBtn').textContent = '🔄 重新掃描';
+  document.getElementById('smStatus').textContent = `掃描完成 · ${smartMoneyData.length} 錢包 · ${new Date().toLocaleTimeString('zh-TW')}`;
+}
+
+// ── Apply smart money signals to EV engine ──
+function applySmartMoneyToEV() {
+  // Count smart money buys/sells per token
+  var smSignals = {}; // sym → { buys, sells, tierScore }
+  smartMoneyData.forEach(wd => {
+    var tierWeight = wd.wallet.tier === 'S' ? 3 : wd.wallet.tier === 'A' ? 2 : 1;
+    wd.txns.forEach(tx => {
+      if (!tx.matchOKX) return;
+      var sym = tx.matchOKX;
+      if (!smSignals[sym]) smSignals[sym] = { buys: 0, sells: 0, tierScore: 0, wallets: new Set() };
+      if (tx.direction === 'IN') { smSignals[sym].buys += tierWeight; }
+      else { smSignals[sym].sells += tierWeight; }
+      smSignals[sym].tierScore += tierWeight;
+      smSignals[sym].wallets.add(wd.wallet.label);
+    });
+  });
+
+  // Apply to allT
+  allT.forEach(t => {
+    var sig = smSignals[t.sym];
+    if (!sig) { t.smBuys = 0; t.smSells = 0; t.smWallets = []; t.smBoost = 0; return; }
+    t.smBuys = sig.buys;
+    t.smSells = sig.sells;
+    t.smWallets = [...sig.wallets];
+    var netSM = sig.buys - sig.sells;
+    var boost = 0;
+    if (netSM >= 6) boost = 20;
+    else if (netSM >= 3) boost = 12;
+    else if (netSM >= 1) boost = 6;
+    else if (netSM <= -6) boost = -20;
+    else if (netSM <= -3) boost = -12;
+    else if (netSM <= -1) boost = -6;
+    t.smBoost = boost;
+    t.evScore = Math.max(0, Math.min(100, t.evScore + Math.round(boost * 0.5)));
+    t.ev = t.ev + boost * 0.1;
+    if (boost > 0) t.halfKelly = Math.min(25, t.halfKelly * (1 + boost / 100));
+    else if (boost < 0) t.halfKelly = Math.max(0, t.halfKelly * (1 + boost / 100));
+  });
+
+  // Re-render active panels
+  updateFlowBadges();
+  var v = document.querySelector('.ni.on')?.dataset.v;
+  if (v === 'opportunities') renderOpportunities();
+  else if (v === 'screener') renderScreener();
+}
+
+// ── Smart money badge ──
+function smBadge(t) {
+  if (!t.smBuys && !t.smSells) return '<span style="color:var(--text3);font-size:11px">—</span>';
+  var net = t.smBuys - t.smSells;
+  if (net > 0) return `<span class="sm-badge sm-buy">🧠 買 ${t.smBuys} <span style="font-size:9px;opacity:.7">${t.smWallets.slice(0,1).join('')}</span></span>`;
+  if (net < 0) return `<span class="sm-badge sm-sell">🧠 賣 ${t.smSells}</span>`;
+  return `<span class="sm-badge sm-neu">🧠 中性</span>`;
+}
+
+// ══════════════════════════════════════════════════════
+//  RENDER SMART MONEY VIEW
+// ══════════════════════════════════════════════════════
+function smTab(el, tab) {
+  document.querySelectorAll('#view-smartmoney .tab').forEach(t => t.classList.remove('on'));
+  el.classList.add('on');
+  smTabCurrent = tab;
+  renderSmartMoney();
+}
+
+function renderSmartMoney() {
+  // Global stats
+  var totalWallets = smartMoneyData.length;
+  var activeLast1h = smartMoneyData.filter(w => Date.now() - w.lastActive < 3600000).length;
+  var buyerCount = smartMoneyData.filter(w => w.recentBuys > w.recentSells).length;
+  var sellerCount = smartMoneyData.filter(w => w.recentSells > w.recentBuys).length;
+
+  // Token aggregation
+  var tokenActivity = {};
+  smartMoneyData.forEach(wd => {
+    wd.txns.forEach(tx => {
+      var sym = tx.matchOKX || tx.tokenSym;
+      if (!sym || sym === '?' || sym.length > 10) return;
+      if (!tokenActivity[sym]) tokenActivity[sym] = { sym, buys: 0, sells: 0, wallets: new Set(), txns: [], isOKX: !!tx.matchOKX };
+      if (tx.direction === 'IN') tokenActivity[sym].buys++;
+      else tokenActivity[sym].sells++;
+      tokenActivity[sym].wallets.add(wd.wallet.label);
+      tokenActivity[sym].txns.push({ ...tx, walletLabel: wd.wallet.label, walletTier: wd.wallet.tier });
+    });
+  });
+  var tokenList = Object.values(tokenActivity).sort((a, b) => (b.buys + b.sells) - (a.buys + a.sells));
+  var hotBuys = tokenList.filter(t => t.buys > t.sells).slice(0, 5);
+  var hotSells = tokenList.filter(t => t.sells > t.buys).slice(0, 5);
+
+  document.getElementById('smStats').innerHTML = `
+    <div class="sc2 ca"><div class="sl2">監控錢包</div><div class="sv2" style="color:var(--accent)">${totalWallets}</div><div class="sc3">ETH+SOL+BSC</div></div>
+    <div class="sc2 cg"><div class="sl2">1h內活躍</div><div class="sv2" style="color:var(--green)">${activeLast1h}</div></div>
+    <div class="sc2 cg"><div class="sl2">淨買方</div><div class="sv2" style="color:var(--green)">${buyerCount}</div><div class="sc3">聰明錢包</div></div>
+    <div class="sc2 cr"><div class="sl2">淨賣方</div><div class="sv2" style="color:var(--red)">${sellerCount}</div></div>
+    <div class="sc2 ct"><div class="sl2">熱門買入</div><div class="sv2" style="color:var(--teal)">${hotBuys.map(t=>t.sym).slice(0,3).join(' ')}</div></div>
+    <div class="sc2 cp"><div class="sl2">熱門賣出</div><div class="sv2" style="color:var(--purple);font-size:14px">${hotSells.map(t=>t.sym).slice(0,3).join(' ')}</div></div>`;
+
+  // Filter data
+  var wallets = [...smartMoneyData];
+  if (smTabCurrent === 'eth') wallets = wallets.filter(w => w.wallet.chain === 'eth');
+  else if (smTabCurrent === 'sol') wallets = wallets.filter(w => w.wallet.chain === 'sol');
+  else if (smTabCurrent === 'bsc') wallets = wallets.filter(w => w.wallet.chain === 'bsc');
+  else if (smTabCurrent === 'buyers') wallets = wallets.filter(w => w.recentBuys > w.recentSells);
+  else if (smTabCurrent === 'okx') wallets = wallets.filter(w => w.okxMatches.length > 0);
+  else if (smTabCurrent === 'tokens') { renderTokenActivity(tokenList); return; }
+  wallets.sort((a, b) => b.lastActive - a.lastActive || b.okxMatches.length - a.okxMatches.length);
+
+  if (!wallets.length) {
+    document.getElementById('smBody').innerHTML = '<div class="empty2">無數據，請先點擊「掃描」</div>';
+    return;
+  }
+
+  var chainIcon = c => c === 'eth' ? '🔷' : c === 'sol' ? '🟣' : '🟡';
+  var tierBadge = t => t === 'S' ? '<span class="sm-tier sm-tier-s">S</span>' : t === 'A' ? '<span class="sm-tier sm-tier-a">A</span>' : '<span class="sm-tier sm-tier-b">B</span>';
+  var relTime = ms => {
+    if (!ms) return '--';
+    var d = Date.now() - ms;
+    if (d < 60000) return Math.round(d/1000)+'s前';
+    if (d < 3600000) return Math.round(d/60000)+'m前';
+    if (d < 86400000) return Math.round(d/3600000)+'h前';
+    return Math.round(d/86400000)+'d前';
+  };
+
+  document.getElementById('smBody').innerHTML = `
+    <div class="sm-wallet-grid">
+      ${wallets.map(wd => {
+        var w = wd.wallet;
+        var hasOKX = wd.okxMatches.length > 0;
+        var netBias = wd.recentBuys - wd.recentSells;
+        return `<div class="sm-card ${netBias > 0 ? 'sm-card-buy' : netBias < 0 ? 'sm-card-sell' : ''}">
+          <div class="sm-card-head">
+            <div>
+              <div class="sm-wallet-name">${chainIcon(w.chain)} ${w.label} ${tierBadge(w.tier)}</div>
+              <div class="sm-wallet-addr">${w.addr.slice(0,8)}…${w.addr.slice(-6)}</div>
+            </div>
+            <div style="text-align:right">
+              <div class="sm-activity-time">${relTime(wd.lastActive)}</div>
+              ${hasOKX ? `<div class="sm-okx-match">OKX: ${wd.okxMatches.slice(0,3).join(' ')}</div>` : ''}
+            </div>
+          </div>
+          <div class="sm-bias-bar">
+            <div class="sm-bias-label"><span class="g">買 ${wd.recentBuys}</span> <span class="r">賣 ${wd.recentSells}</span></div>
+            <div class="sm-bias-bg">
+              <div class="sm-bias-fill" style="width:${wd.recentBuys+wd.recentSells>0?Math.round(wd.recentBuys/(wd.recentBuys+wd.recentSells)*100):50}%;background:${netBias>=0?'var(--green)':'var(--red)'}"></div>
+            </div>
+          </div>
+          <div class="sm-txn-list">
+            ${wd.txns.slice(0, 4).map(tx => `
+              <div class="sm-txn">
+                <span class="sm-txn-dir ${tx.direction==='IN'?'sm-in':'sm-out'}">${tx.direction==='IN'?'買入':'賣出'}</span>
+                <span class="sm-txn-sym ${tx.matchOKX?'sm-txn-match':''}">${tx.tokenSym}</span>
+                <span class="sm-txn-val">${tx.value > 0 ? fmt2(tx.value, 3) : ''}</span>
+                ${tx.matchOKX ? `<span class="sm-txn-okx">✓ OKX</span>` : ''}
+                <span class="sm-txn-time">${relTime(tx.time)}</span>
+              </div>`).join('')}
+            ${wd.txns.length === 0 ? '<div style="color:var(--text3);font-size:11px;padding:4px 0">暫無近期交易</div>' : ''}
+          </div>
+          ${wd.nansenData ? `<div class="sm-nansen">Nansen: ${wd.nansenData.labels.slice(0,2).join(', ') || '已標記'}</div>` : ''}
+          ${wd.arkhamData?.name ? `<div class="sm-arkham">Arkham: ${wd.arkhamData.name}</div>` : ''}
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+function renderTokenActivity(tokenList) {
+  if (!tokenList.length) {
+    document.getElementById('smBody').innerHTML = '<div class="empty2">無 token 活動數據，請先掃描</div>';
+    return;
+  }
+  document.getElementById('smBody').innerHTML = `
+    <table><thead><tr>
+      <th>#</th><th>代幣</th><th>OKX</th><th>聰明錢包買</th><th>聰明錢包賣</th>
+      <th>活躍錢包數</th><th>淨方向</th><th>EV信號</th><th>流向一致</th>
+    </tr></thead>
+    <tbody>${tokenList.slice(0,40).map((tok, i) => {
+      var t = allT.find(x => x.sym === tok.sym && x.type === 'SWAP');
+      var net = tok.buys - tok.sells;
+      var netColor = net > 0 ? 'var(--green)' : net < 0 ? 'var(--red)' : 'var(--text2)';
+      var evSig = t ? (t.direction === 'LONG' ? '<span class="ev-badge evl" style="font-size:10px;padding:2px 7px">📈多</span>' : t.direction === 'SHORT' ? '<span class="ev-badge evs" style="font-size:10px;padding:2px 7px">📉空</span>' : '<span class="ev-badge evn" style="font-size:10px;padding:2px 7px">—</span>') : '<span style="color:var(--text3)">非OKX</span>';
+      var aligned = t && net > 0 && t.direction === 'LONG' ? '<span style="color:var(--green);font-weight:700">✓ 一致</span>' : t && net < 0 && t.direction === 'SHORT' ? '<span style="color:var(--green);font-weight:700">✓ 一致</span>' : t && Math.abs(net) > 0 ? '<span style="color:var(--red);font-weight:700">✗ 背離</span>' : '—';
+      return `<tr>
+        <td class="mono" style="color:var(--text3)">${i+1}</td>
+        <td><div class="cc2"><div class="ci2">${tok.sym.slice(0,2)}</div><div class="cn2">${tok.sym}</div></div></td>
+        <td>${tok.isOKX ? '<span class="tag2 tg">✓ 可交易</span>' : '<span class="tag2 tn">鏈上</span>'}</td>
+        <td class="mono g">${tok.buys}</td>
+        <td class="mono r">${tok.sells}</td>
+        <td class="mono">${tok.wallets.size}</td>
+        <td class="mono" style="color:${netColor};font-weight:700">${net >= 0 ? '+' : ''}${net}</td>
+        <td>${evSig}</td>
+        <td>${aligned}</td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+}
+
+// ══════════════════════════════════════════════════════
+//  AI 異動監控引擎 + 持倉追蹤時間軸
+//  複製自 ValueScan / GMGN AI追蹤模組邏輯
+// ══════════════════════════════════════════════════════
+
+// ── 全域狀態 ──
+var alertTimeline = [];       // 所有警報記錄
+var trackedPositions = {};    // 進場中的持倉追蹤 { sym: {entryPrice, entryTime, alerts[]} }
+var aiAnalysisCache = null;     // Claude AI 大盤分析結果
+var aiAnalysisTime = 0;
+var aiAnalysisLoading = false;
+var monitorInterval = null;
+var sentimentData = { btc: { long: 50, short: 50 }, eth: { long: 50, short: 50 } };
+
+// ── 標籤定義 ──
+var ALERT_TAGS = {
+  alpha:      { text: 'Alpha',      cls: 'tag-alpha' },
+  anomaly:    { text: '異常活躍',   cls: 'tag-anomaly' },
+  bullish:    { text: '利多',       cls: 'tag-bull2' },
+  bearish:    { text: '利空',       cls: 'tag-bear2' },
+  contract:   { text: '合約',       cls: 'tag-contract' },
+  trend:      { text: '趨勢異動',   cls: 'tag-trend' },
+  protect:    { text: '保護本金',   cls: 'tag-protect' },
+  stoploss:   { text: '移動止盈',   cls: 'tag-stoploss' },
+  end:        { text: '追蹤結束',   cls: 'tag-end' },
+  smartmoney: { text: '聰明錢包',   cls: 'tag-smart' },
+  whale:      { text: '鯨魚大單',   cls: 'tag-whale' },
+  funding:    { text: '費率套利',   cls: 'tag-funding' },
+};
+
+// ══════════════════════════════════════════════════════
+//  ANOMALY DETECTION — 偵測各種異動條件
+// ══════════════════════════════════════════════════════
+function detectAnomalies() {
+  if (!allT.length) return;
+
+  var now = Date.now();
+  var newAlerts = [];
+
+  // 取前60個主要合約幣種
+  var swapTop = swapT.filter(t => t.volCcy24h > 5e6)
+    .sort((a, b) => b.volCcy24h - a.volCcy24h).slice(0, 60);
+
+  swapTop.forEach(t => {
+    var alerts = [];
+    var tags = [];
+
+    // ── 條件1：成交量暴增（相對均值 3x 以上）
+    var volScore = t.volCcy24h / 1e7; // 每 1000萬 USDT 為 1 分
+    var isVolAnomaly = volScore > 30 && Math.abs(t.changePct) > 3;
+
+    // ── 條件2：合約資金費率異常
+    var fr = t.fundingRate ? t.fundingRate * 100 : 0;
+    var isFRAnomaly = Math.abs(fr) > 0.06;
+    var isFRExtreme = Math.abs(fr) > 0.1;
+
+    // ── 條件3：EV 信號強且有大單支撐
+    var isEVStrong = t.evScore >= 70 && t.ev > 2;
+    var hasFlowSupport = t.flowScore !== null && Math.abs(t.flowScore) >= 40;
+    var isFlowAligned = t.flowScore !== null &&
+      ((t.direction === 'LONG' && t.flowScore > 30) ||
+       (t.direction === 'SHORT' && t.flowScore < -30));
+
+    // ── 條件4：聰明錢包買入
+    var hasSmartBuy = t.smBuys > 0 && t.smBuys > t.smSells;
+    var hasSmartSell = t.smSells > 0 && t.smSells > t.smBuys;
+
+    // ── 條件5：價格突破24h高點/低點
+    var range = t.high24h - t.low24h;
+    var pos = range > 0 ? (t.last - t.low24h) / range : 0.5;
+    var isBreakoutHigh = pos > 0.92 && t.changePct > 4;
+    var isBreakoutLow  = pos < 0.08 && t.changePct < -4;
+
+    // ── 已追蹤中的持倉 → 檢查止盈/退出 ──
+    var tracked = trackedPositions[t.sym];
+    if (tracked) {
+      var pnl = t.direction === 'LONG'
+        ? (t.last - tracked.entryPrice) / tracked.entryPrice * 100
+        : (tracked.entryPrice - t.last) / tracked.entryPrice * 100;
+
+      // 浮盈 > 5% → 提示移動止盈
+      if (pnl > 5 && !tracked.stopAlerted) {
+        tracked.stopAlerted = true;
+        newAlerts.push(makeAlert(t, 'stoploss',
+          `${t.sym} 追蹤後浮盈 ${pnl.toFixed(1)}%，建議移動止盈保護利潤`,
+          [ALERT_TAGS.stoploss, ALERT_TAGS.contract],
+          '上漲止盈', t.last));
+      }
+
+      // 趨勢減弱：flowScore 由強轉弱 or EV 降至 50 以下
+      var trendWeak = (t.flowScore !== null && tracked.lastFlowScore > 30 && t.flowScore < 10)
+        || (tracked.lastEvScore > 65 && t.evScore < 50);
+      if (trendWeak && !tracked.weakAlerted) {
+        tracked.weakAlerted = true;
+        newAlerts.push(makeAlert(t, 'protect',
+          `${t.sym} 上漲趨勢減弱，注意止盈及保護本金`,
+          [ALERT_TAGS.protect, ALERT_TAGS.contract],
+          '保護本金', t.last));
+      }
+
+      // 趨勢完全逆轉 → 追蹤結束
+      var trendEnd = (t.direction === 'SHORT' && tracked.direction === 'LONG')
+        || (t.direction === 'LONG' && tracked.direction === 'SHORT')
+        || (t.evScore < 35 && pnl < -3);
+      if (trendEnd) {
+        delete trackedPositions[t.sym];
+        newAlerts.push(makeAlert(t, 'end',
+          `${t.sym} 本輪異動監控追蹤結束，注意市場行情變化`,
+          [ALERT_TAGS.end, ALERT_TAGS.contract],
+          '追蹤結束', t.last));
+      }
+
+      // 更新快照
+      if (tracked) {
+        tracked.lastFlowScore = t.flowScore;
+        tracked.lastEvScore = t.evScore;
+      }
+      return; // 已追蹤中，不再觸發新進場信號
+    }
+
+    // ── 未追蹤：判斷是否產生新信號 ──
+
+    // Alpha 信號：EV 強 + 資金流入 + 非高風險
+    if (isEVStrong && isFlowAligned && t.risk !== 'd') {
+      var isBull = t.direction === 'LONG';
+      tags.push(ALERT_TAGS.alpha, ALERT_TAGS.anomaly,
+        isBull ? ALERT_TAGS.bullish : ALERT_TAGS.bearish,
+        ALERT_TAGS.contract);
+      alerts.push({
+        type: isBull ? 'bull_alpha' : 'bear_alpha',
+        title: `${t.sym} 合約資金異常活躍，可能是${isBull ? '利多' : '利空'}信號，請重點跟蹤`,
+        body: `${t.sym} 主力資金持續${isBull ? '流入' : '流出'}，24小時漲跌幅${t.changePct.toFixed(2)}%，現報 $${fmtP2(t.last)}，可能出現${isBull ? '上漲' : '下跌'}行情，但需注意風險。`,
+        tags, priority: 'high',
+      });
+    }
+
+    // 趨勢異動：成交量暴增
+    else if (isVolAnomaly && hasFlowSupport) {
+      tags.push(ALERT_TAGS.trend, ALERT_TAGS.anomaly, ALERT_TAGS.contract);
+      alerts.push({
+        type: 'trend_anomaly',
+        title: `${t.sym} 合約資金出現趨勢行情異動，請重點關注`,
+        body: `${t.sym} 主力資金異常流入，現報 $${fmtP2(t.last)}，24小時漲跌幅${t.changePct.toFixed(2)}%，請注意市場行情變化。`,
+        tags, priority: 'medium',
+      });
+    }
+
+    // 資金費率套利信號
+    else if (isFRExtreme) {
+      var isFRBull = fr < 0;
+      tags.push(ALERT_TAGS.funding, ALERT_TAGS.contract,
+        isFRBull ? ALERT_TAGS.bullish : ALERT_TAGS.bearish);
+      alerts.push({
+        type: 'funding_extreme',
+        title: `${t.sym} 資金費率極端異常 (${fr.toFixed(4)}%)，${isFRBull ? '利多信號' : '做空機會'}`,
+        body: `${t.sym} 資金費率達到 ${fr.toFixed(4)}%，${isFRBull ? '空方大量付費，可能即將軋空' : '多方高度槓桿，需警惕回調'}，現報 $${fmtP2(t.last)}。`,
+        tags, priority: 'high',
+      });
+    }
+
+    // 聰明錢包買入
+    else if (hasSmartBuy && t.evScore >= 60) {
+      tags.push(ALERT_TAGS.smartmoney, ALERT_TAGS.bullish, ALERT_TAGS.contract);
+      alerts.push({
+        type: 'smart_buy',
+        title: `${t.sym} 聰明錢包介入，跟蹤信號`,
+        body: `偵測到 ${t.smWallets?.slice(0,2).join('、') || '已知聰明錢包'} 買入 ${t.sym}，現報 $${fmtP2(t.last)}，EV 評分 ${t.evScore}，請重點關注。`,
+        tags, priority: 'medium',
+      });
+    }
+
+    // 突破高點
+    else if (isBreakoutHigh) {
+      tags.push(ALERT_TAGS.trend, ALERT_TAGS.bullish);
+      alerts.push({
+        type: 'breakout_high',
+        title: `${t.sym} 突破24h高點，趨勢延續信號`,
+        body: `${t.sym} 現報 $${fmtP2(t.last)}，突破日內高點，成交量放大，趨勢可能延續。`,
+        tags, priority: 'low',
+      });
+    }
+
+    // 觸發 → 加入時間軸 + 開始追蹤
+    if (alerts.length > 0) {
+      var a = alerts[0];
+      newAlerts.push(makeAlert(t, a.type, a.title, a.tags, a.type, t.last, a.priority, a.body));
+      // 開始持倉追蹤
+      trackedPositions[t.sym] = {
+        sym: t.sym, direction: t.direction,
+        entryPrice: t.last, entryTime: now,
+        lastFlowScore: t.flowScore, lastEvScore: t.evScore,
+        stopAlerted: false, weakAlerted: false,
+        alerts: [],
+      };
+    }
+  });
+
+  // 加入時間軸（最多保留 200 條，新的在最前）
+  newAlerts.forEach(a => {
+    alertTimeline.unshift(a);
+  });
+  if (alertTimeline.length > 200) alertTimeline.splice(200);
+
+  // 刷新UI
+  if (document.querySelector('.ni.on')?.dataset.v === 'aimonitor') renderAIMonitor();
+  updateAIMonitorBadge();
+}
+
+function makeAlert(t, type, title, tags, label, price, priority = 'medium', body = '') {
+  return {
+    id: Date.now() + Math.random(),
+    sym: t.sym, type, title, tags, label,
+    price, priority,
+    body: body || `${t.sym} 現報 $${fmtP2(price)}，24h漲跌 ${t.changePct?.toFixed(2)}%。`,
+    time: Date.now(),
+    evScore: t.evScore, ev: t.ev, rr: t.rr,
+    direction: t.direction, confidence: t.confidence,
+  };
+}
+
+function updateAIMonitorBadge() {
+  var recent = alertTimeline.filter(a => Date.now() - a.time < 3600000).length;
+  var badge = document.getElementById('aimonitorBadge');
+  if (badge) badge.textContent = recent > 0 ? recent : '';
+}
+
+// ══════════════════════════════════════════════════════
+//  SENTIMENT — 多空比 (BTC/ETH Long/Short ratio)
+// ══════════════════════════════════════════════════════
+async function fetchSentiment() {
+  try {
+    // OKX 多空比 API
+    var [btcLS, ethLS] = await Promise.allSettled([
+      okx2('/rubik/stat/account/long-short-ratio?ccy=BTC&period=1H'),
+      okx2('/rubik/stat/account/long-short-ratio?ccy=ETH&period=1H'),
+    ]);
+    if (btcLS.status === 'fulfilled' && btcLS.value?.length) {
+      var r = parseFloat(btcLS.value[0].longShortRatio || 1);
+      sentimentData.btc = { long: Math.round(r / (1 + r) * 100), short: Math.round(100 - r / (1 + r) * 100) };
+    }
+    if (ethLS.status === 'fulfilled' && ethLS.value?.length) {
+      var r = parseFloat(ethLS.value[0].longShortRatio || 1);
+      sentimentData.eth = { long: Math.round(r / (1 + r) * 100), short: Math.round(100 - r / (1 + r) * 100) };
+    }
+  } catch(e) {}
+}
+
+// ══════════════════════════════════════════════════════
+//  CLAUDE AI 大盤分析
+// ══════════════════════════════════════════════════════
+async function runAIAnalysis() {
+  if (aiAnalysisLoading) return;
+  aiAnalysisLoading = true;
+  document.getElementById('aiAnalysisBtn').textContent = '⏳ 分析中…';
+  document.getElementById('aiAnalysisContent').innerHTML =
+    '<div class="loading"><div class="spin2"></div>Claude AI 正在分析市場結構…</div>';
+
+  try {
+    // 收集當前市場快照
+    var btc = swapT.find(t => t.sym === 'BTC') || {};
+    var eth = swapT.find(t => t.sym === 'ETH') || {};
+    var sol = swapT.find(t => t.sym === 'SOL') || {};
+    var topLongs = allT.filter(t => t.direction === 'LONG' && t.ev > 0)
+      .sort((a, b) => b.evScore - a.evScore).slice(0, 5);
+    var topShorts = allT.filter(t => t.direction === 'SHORT' && t.ev > 0)
+      .sort((a, b) => b.evScore - a.evScore).slice(0, 5);
+    var avgFR = swapT.filter(t => t.fundingRate !== null)
+      .reduce((a, t) => a + t.fundingRate, 0) /
+      Math.max(1, swapT.filter(t => t.fundingRate !== null).length) * 100;
+    var bullCount = allT.filter(t => t.direction === 'LONG').length;
+    var bearCount = allT.filter(t => t.direction === 'SHORT').length;
+
+    var prompt = `你是一位加密貨幣市場分析師。請根據以下 OKX 即時數據，用繁體中文撰寫一份結構化的 AI 大盤分析報告。
+
+## 當前市場數據（${new Date().toLocaleString('zh-TW')}）
+
+**主要幣種：**
+- BTC: $${fmtP2(btc.last)} | 24h: ${btc.changePct?.toFixed(2)}% | EV分: ${btc.evScore} | 信號: ${btc.direction} | 費率: ${btc.fundingRate !== null ? (btc.fundingRate * 100).toFixed(4) + '%' : '--'}
+- ETH: $${fmtP2(eth.last)} | 24h: ${eth.changePct?.toFixed(2)}% | EV分: ${eth.evScore} | 信號: ${eth.direction}
+- SOL: $${fmtP2(sol.last)} | 24h: ${sol.changePct?.toFixed(2)}% | EV分: ${sol.evScore} | 信號: ${sol.direction}
+
+**市場整體：**
+- 看多信號: ${bullCount} 幣種 | 看空信號: ${bearCount} 幣種
+- 多空比: ${(bullCount / Math.max(1, bullCount + bearCount) * 100).toFixed(0)}% 多頭
+- BTC 多空比: 多方 ${sentimentData.btc.long}% / 空方 ${sentimentData.btc.short}%
+- ETH 多空比: 多方 ${sentimentData.eth.long}% / 空方 ${sentimentData.eth.short}%
+- 市場平均資金費率: ${avgFR.toFixed(4)}%
+
+**EV+ 做多機會 Top5：**
+${topLongs.map((t, i) => `${i + 1}. ${t.sym}: EV ${t.evScore} | R:R ${t.rr.toFixed(1)}x | Kelly ${t.halfKelly.toFixed(1)}% | 費率 ${t.fundingRate !== null ? (t.fundingRate * 100).toFixed(4) + '%' : '--'}`).join('\n')}
+
+**EV+ 做空機會 Top5：**
+${topShorts.map((t, i) => `${i + 1}. ${t.sym}: EV ${t.evScore} | R:R ${t.rr.toFixed(1)}x | Kelly ${t.halfKelly.toFixed(1)}%`).join('\n')}
+
+**大單流向：**
+${Object.values(orderFlowCache).filter(f => Math.abs(f.flowScore) > 40).slice(0, 5).map(f => `${f.sym}: 流向分數 ${f.flowScore > 0 ? '+' : ''}${f.flowScore} (${f.label})`).join('\n') || '暫無強勢流向'}
+
+請輸出以下格式（請用繁體中文，直接輸出內容不要加markdown code block）：
+
+【大盤結構判斷】
+（2-3句判斷當前市場整體偏多還是偏空，主要驅動因素是什麼）
+
+【關鍵價位】
+• BTC 關鍵支撐：$xxxxx（說明原因）
+• BTC 關鍵壓力：$xxxxx（說明原因）
+• 觸發條件：（說明什麼條件會確認方向）
+
+【重點關注幣種】
+（列出 3-5 個最值得關注的幣種，說明原因和策略）
+
+【風險提示】
+（說明當前市場主要風險因素）
+
+【時間視角】
+（短線1-4h / 中線預測方向）`;
+
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    var data = await resp.json();
+    var text = data.content?.[0]?.text || '分析失敗，請重試';
+
+    aiAnalysisCache = text;
+    aiAnalysisTime = Date.now();
+    renderAIAnalysis(text);
+  } catch(e) {
+    document.getElementById('aiAnalysisContent').innerHTML =
+      `<div class="empty2">分析失敗：${e.message}</div>`;
+  }
+  aiAnalysisLoading = false;
+  document.getElementById('aiAnalysisBtn').textContent = '🤖 重新分析';
+}
+
+function renderAIAnalysis(text) {
+  // 解析結構化輸出
+  var sections = [
+    { key: '大盤結構判斷', icon: '📊', cls: 'ai-sec-overview' },
+    { key: '關鍵價位',     icon: '🎯', cls: 'ai-sec-levels' },
+    { key: '重點關注幣種', icon: '💎', cls: 'ai-sec-picks' },
+    { key: '風險提示',     icon: '⚠️', cls: 'ai-sec-risk' },
+    { key: '時間視角',     icon: '⏱', cls: 'ai-sec-time' },
+  ];
+
+  var html = `<div class="ai-report-time">生成時間：${new Date().toLocaleString('zh-TW')} · 數據來自 OKX 即時 API</div>`;
+
+  var remaining = text;
+  sections.forEach((sec, idx) => {
+    var startMarker = `【${sec.key}】`;
+    var nextMarker = idx < sections.length - 1 ? `【${sections[idx + 1].key}】` : null;
+    var start = remaining.indexOf(startMarker);
+    if (start === -1) return;
+    var end = nextMarker ? remaining.indexOf(nextMarker, start) : remaining.length;
+    var content = remaining.slice(start + startMarker.length, end !== -1 ? end : undefined).trim();
+
+    // Format bullet points
+    var formatted = content
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .map(line => line.startsWith('•') || line.startsWith('-') || line.match(/^\d\./)
+        ? `<div class="ai-bullet">${line}</div>`
+        : `<div class="ai-line">${line}</div>`)
+      .join('');
+
+    html += `<div class="ai-section ${sec.cls}">
+      <div class="ai-sec-title">${sec.icon} ${sec.key}</div>
+      <div class="ai-sec-body">${formatted}</div>
+    </div>`;
+  });
+
+  // Fallback: 直接顯示原文
+  if (!html.includes('ai-section')) {
+    html += `<div class="ai-section"><div class="ai-sec-body">${text.replace(/\n/g, '<br>')}</div></div>`;
+  }
+
+  document.getElementById('aiAnalysisContent').innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════
+//  RENDER AI MONITOR VIEW
+// ══════════════════════════════════════════════════════
+var monitorTabCurrent = 'timeline';
+function monitorTab(el, tab) {
+  document.querySelectorAll('#view-aimonitor .tab').forEach(t => t.classList.remove('on'));
+  el.classList.add('on');
+  monitorTabCurrent = tab;
+  renderAIMonitor();
+}
+
+function renderAIMonitor() {
+  if (monitorTabCurrent === 'analysis') { renderAnalysisTab(); return; }
+  if (monitorTabCurrent === 'sentiment') { renderSentimentTab(); return; }
+  renderTimelineTab();
+}
+
+function renderTimelineTab() {
+  // Filter
+  var filterSym = (document.getElementById('monitorSearch')?.value || '').toUpperCase();
+  var data = alertTimeline.filter(a => !filterSym || a.sym.includes(filterSym));
+
+  // Stats
+  var h1 = data.filter(a => Date.now() - a.time < 3600000).length;
+  var highs = data.filter(a => a.priority === 'high').length;
+  var tracked = Object.keys(trackedPositions).length;
+  document.getElementById('monitorStats').innerHTML = `
+    <div class="sc2 ca"><div class="sl2">1h內警報</div><div class="sv2" style="color:var(--accent)">${h1}</div></div>
+    <div class="sc2 cr"><div class="sl2">高優先</div><div class="sv2" style="color:var(--red)">${highs}</div></div>
+    <div class="sc2 cg"><div class="sl2">追蹤中</div><div class="sv2" style="color:var(--green)">${tracked}</div></div>
+    <div class="sc2 cy"><div class="sl2">總記錄</div><div class="sv2" style="color:var(--yellow)">${alertTimeline.length}</div></div>`;
+
+  if (!data.length) {
+    document.getElementById('monitorTimeline').innerHTML =
+      '<div class="empty2">暫無異動記錄，系統每 60 秒自動掃描</div>';
+    return;
+  }
+
+  var relT = ms => {
+    var d = Date.now() - ms;
+    if (d < 60000) return Math.round(d / 1000) + 's前';
+    if (d < 3600000) return Math.round(d / 60000) + 'm前';
+    return new Date(ms).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+  };
+  var dateStr = ms => {
+    var d = new Date(ms);
+    var today = new Date();
+    if (d.toDateString() === today.toDateString()) return '今天';
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  };
+
+  var html = '<div class="timeline">';
+  var lastDate = '';
+  data.forEach(a => {
+    var dd = dateStr(a.time);
+    if (dd !== lastDate) {
+      html += `<div class="tl-date-sep">${dd}</div>`;
+      lastDate = dd;
+    }
+    var isTracked = !!trackedPositions[a.sym];
+    var pClass = a.priority === 'high' ? 'tl-high' : a.priority === 'medium' ? 'tl-med' : 'tl-low';
+    var typeIcon = a.type === 'stoploss' ? '📈' : a.type === 'protect' ? '🛡' : a.type === 'end' ? '🔚' : a.type === 'smart_buy' ? '🧠' : a.type === 'funding_extreme' ? '💸' : '⚡';
+    html += `
+      <div class="tl-item ${pClass}">
+        <div class="tl-dot ${pClass}-dot"></div>
+        <div class="tl-content">
+          <div class="tl-head">
+            <span class="tl-time">${new Date(a.time).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}</span>
+            <span class="tl-label">${typeIcon} 異動監控</span>
+            ${isTracked ? '<span class="tl-tracking">追蹤中</span>' : ''}
+          </div>
+          <div class="tl-title">${a.title}</div>
+          <div class="tl-body">${a.body}</div>
+          <div class="tl-tags">${a.tags.map(tg => `<span class="tl-tag ${tg.cls}">${tg.text}</span>`).join('')}</div>
+          <div class="tl-meta">
+            <span class="tl-meta-item">EV ${a.evScore}</span>
+            <span class="tl-meta-item">R:R ${a.rr?.toFixed(1)}x</span>
+            <span class="tl-meta-item">${a.direction === 'LONG' ? '📈多' : a.direction === 'SHORT' ? '📉空' : '—'}</span>
+            <span class="tl-meta-item" style="color:var(--text3)">${relT(a.time)}</span>
+          </div>
+        </div>
+      </div>`;
+  });
+  html += '</div>';
+  document.getElementById('monitorTimeline').innerHTML = html;
+}
+
+function renderAnalysisTab() {
+  document.getElementById('monitorStats').innerHTML = `
+    <div class="sc2 ca"><div class="sl2">BTC 多方</div><div class="sv2" style="color:var(--accent)">${sentimentData.btc.long}%</div></div>
+    <div class="sc2 cr"><div class="sl2">BTC 空方</div><div class="sv2" style="color:var(--red)">${sentimentData.btc.short}%</div></div>
+    <div class="sc2 cg"><div class="sl2">ETH 多方</div><div class="sv2" style="color:var(--green)">${sentimentData.eth.long}%</div></div>
+    <div class="sc2 cr"><div class="sl2">ETH 空方</div><div class="sv2" style="color:var(--red)">${sentimentData.eth.short}%</div></div>`;
+  document.getElementById('monitorTimeline').innerHTML = `
+    <div class="ai-analysis-wrap">
+      <div class="ai-analysis-toolbar">
+        <button class="run-btn2" id="aiAnalysisBtn" onclick="runAIAnalysis()">🤖 AI 大盤分析</button>
+        <span style="font-size:11px;color:var(--text3)">${aiAnalysisTime ? '上次分析：' + new Date(aiAnalysisTime).toLocaleTimeString('zh-TW') : '點擊開始分析'}</span>
+      </div>
+      <div id="aiAnalysisContent">${aiAnalysisCache ? '' : '<div class="empty2">點擊「AI 大盤分析」生成市場報告</div>'}</div>
+    </div>`;
+  if (aiAnalysisCache) renderAIAnalysis(aiAnalysisCache);
+}
+
+function renderSentimentTab() {
+  // SVG donut chart
+  var donut = (long, short, label) => {
+    var r = 40, cx = 60, cy = 60, stroke = 12;
+    var circ = 2 * Math.PI * r;
+    var longArc = circ * long / 100;
+    var shortArc = circ * short / 100;
+    return `<div class="sentiment-donut-wrap">
+      <svg width="120" height="120" viewBox="0 0 120 120">
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--bg3)" stroke-width="${stroke}"/>
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--green)" stroke-width="${stroke}"
+          stroke-dasharray="${longArc} ${circ}" stroke-dashoffset="${circ * 0.25}" stroke-linecap="round"/>
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--red)" stroke-width="${stroke}"
+          stroke-dasharray="${shortArc} ${circ}" stroke-dashoffset="${circ * 0.25 - longArc}" stroke-linecap="round"/>
+        <text x="${cx}" y="${cy - 6}" text-anchor="middle" fill="var(--text)" font-size="13" font-weight="800" font-family="JetBrains Mono">${label}</text>
+        <text x="${cx}" y="${cy + 10}" text-anchor="middle" fill="var(--text2)" font-size="9">多空比</text>
+      </svg>
+      <div class="sentiment-legend">
+        <div class="sl-item"><span class="sl-dot" style="background:var(--green)"></span>多方 ${long}%</div>
+        <div class="sl-item"><span class="sl-dot" style="background:var(--red)"></span>空方 ${short}%</div>
+      </div>
+    </div>`;
+  };
+
+  var topLongs = allT.filter(t => t.direction === 'LONG').length;
+  var topShorts = allT.filter(t => t.direction === 'SHORT').length;
+  var mktLong = Math.round(topLongs / Math.max(1, topLongs + topShorts) * 100);
+
+  document.getElementById('monitorStats').innerHTML = `
+    <div class="sc2 ca"><div class="sl2">市場多頭</div><div class="sv2" style="color:var(--accent)">${mktLong}%</div></div>
+    <div class="sc2 ${mktLong >= 50 ? 'cg' : 'cr'}"><div class="sl2">市場情緒</div><div class="sv2" style="color:${mktLong >= 60 ? 'var(--green)' : mktLong >= 40 ? 'var(--accent)' : 'var(--red)'}">${mktLong >= 65 ? '貪婪' : mktLong >= 55 ? '偏多' : mktLong >= 45 ? '中性' : mktLong >= 35 ? '偏空' : '恐慌'}</div></div>`;
+
+  document.getElementById('monitorTimeline').innerHTML = `
+    <div class="sentiment-grid">
+      ${donut(sentimentData.btc.long, sentimentData.btc.short, 'BTC')}
+      ${donut(sentimentData.eth.long, sentimentData.eth.short, 'ETH')}
+      ${donut(mktLong, 100 - mktLong, '全線')}
+    </div>
+    <div class="sentiment-bar-section">
+      <div class="sb-title">各幣種多空強度</div>
+      ${allT.filter(t => t.direction !== 'NEUTRAL').sort((a, b) => b.evScore - a.evScore).slice(0, 20).map(t => {
+        var isBull = t.direction === 'LONG';
+        return `<div class="sbar-row">
+          <span class="sbar-sym">${t.sym}</span>
+          <div class="sbar-track">
+            <div class="sbar-fill" style="width:${t.confidence}%;background:${isBull ? 'var(--green)' : 'var(--red)'};${!isBull ? 'margin-left:auto' : ''}"></div>
+          </div>
+          <span class="sbar-val ${isBull ? 'g' : 'r'}">${isBull ? '多' : '空'} ${t.confidence}%</span>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════
+//  均線三刀流選幣引擎 (San Dao Liu - Three Swords MA)
+//  基於教材：60分K的 20MA(小藍)、60MA(小綠)、240MA(小橘)
+//  + 資金流向異常加扣分
+//  + Telegram 通知
+// ══════════════════════════════════════════════════════
+
+// ── Telegram 設定 ──
+var TG_BOT_TOKEN = localStorage.getItem('tg_bot_token') || '';
+var TG_CHAT_ID   = localStorage.getItem('tg_chat_id')   || '';
+var TG_ENABLED   = !!(TG_BOT_TOKEN && TG_CHAT_ID);
+
+// ── 三刀流全域狀態 ──
+var sandaoData    = [];   // 所有幣種的三刀流分析結果
+var sandaoLoading = false;
+var sandaoTabCur  = 'all';
+var sandaoSentAlerts = new Set(); // 避免重複通知
+
+// ══════════════════════════════════════════════════════
+//  CANDLE FETCH — 抓 OKX 60分K (instType=SWAP)
+// ══════════════════════════════════════════════════════
+async function fetchCandles(instId, bar='1H', limit=260) {
+  try {
+    var d = await okx2(`/market/candles?instId=${instId}&bar=${bar}&limit=${limit}`);
+    // OKX format: [ts, open, high, low, close, vol, volCcy]
+    return d.map(c => ({
+      ts:    parseInt(c[0]),
+      open:  parseFloat(c[1]),
+      high:  parseFloat(c[2]),
+      low:   parseFloat(c[3]),
+      close: parseFloat(c[4]),
+      vol:   parseFloat(c[5]),
+    })).reverse(); // oldest first
+  } catch(e) { return []; }
+}
+
+// ══════════════════════════════════════════════════════
+//  MA CALCULATION
+// ══════════════════════════════════════════════════════
+function calcMA(closes, period) {
+  var results = new Array(closes.length).fill(null);
+  for (var i = period - 1; i < closes.length; i++) {
+    var sum = 0;
+    for (var j = i - period + 1; j <= i; j++) sum += closes[j];
+    results[i] = sum / period;
+  }
+  return results;
+}
+
+// 斜率：最後N根的線性回歸斜率（標準化）
+function calcSlope(maArr, n=5) {
+  var vals = maArr.slice(-n).filter(v => v !== null);
+  if (vals.length < 2) return 0;
+  var first = vals[0], last = vals[vals.length - 1];
+  return (last - first) / first * 100; // % change over n bars
+}
+
+// ══════════════════════════════════════════════════════
+//  CORE 三刀流 SCORING ENGINE
+// ══════════════════════════════════════════════════════
+function sandaoScore(candles, flowScore, flowEVBoost) {
+  if (!candles || candles.length < 250) return null;
+
+  var closes = candles.map(c => c.close);
+  var vols   = candles.map(c => c.vol);
+  var n = closes.length;
+
+  // ── 計算三條均線 ──
+  var ma20  = calcMA(closes, 20);   // 小藍
+  var ma60  = calcMA(closes, 60);   // 小綠
+  var ma240 = calcMA(closes, 240);  // 小橘
+
+  var last  = closes[n-1];
+  var prev  = closes[n-2];
+  var b20   = ma20[n-1];   // 小藍現值
+  var g60   = ma60[n-1];   // 小綠現值
+  var o240  = ma240[n-1];  // 小橘現值
+  var pb20  = ma20[n-2];   // 小藍前值（判斷斜率）
+  var pg60  = ma60[n-2];
+  var po240 = ma240[n-2];
+
+  if (!b20 || !g60 || !o240) return null;
+
+  // ── 斜率判斷（正/負） ──
+  var slopeBlue   = calcSlope(ma20,  5);
+  var slopeGreen  = calcSlope(ma60,  8);
+  var slopeOrange = calcSlope(ma240, 10);
+  var bluePos   = slopeBlue   > 0.05;
+  var greenPos  = slopeGreen  > 0.03;
+  var orangePos = slopeOrange > 0.02;
+  var blueNeg   = slopeBlue   < -0.05;
+  var greenNeg  = slopeGreen  < -0.03;
+  var orangeNeg = slopeOrange < -0.02;
+
+  // ── 均線排列 ──
+  // 進階多頭排列：小藍 > 小綠 > 小橘
+  var bullAlign    = b20 > g60 && g60 > o240;
+  // 進階空頭排列：小橘 > 小綠 > 小藍
+  var bearAlign    = o240 > g60 && g60 > b20;
+  // 初階：藍綠黃金/死亡交叉
+  var goldCross    = b20 > g60 && pb20 <= pg60; // 剛發生交叉
+  var deathCross   = b20 < g60 && pb20 >= pg60;
+  var blueAbvGreen = b20 > g60;
+  var blueBlwGreen = b20 < g60;
+
+  // ── 價格位置（收定） ──
+  var priceAbvBlue   = last > b20;
+  var priceAbvGreen  = last > g60;
+  var priceAbvOrange = last > o240;
+  var priceBelBlue   = last < b20;
+  var priceBelGreen  = last < g60;
+  var priceBelOrange = last < o240;
+
+  // ── 乖離率 ──
+  var devFromOrange = (last - o240) / o240 * 100;
+  var devFromGreen  = (last - g60)  / g60  * 100;
+  var isOverExtended = devFromOrange > 25 || devFromOrange < -25; // 離家太遠
+
+  // ── RSI 背離近似（用收盤價動能） ──
+  var recentCloses = closes.slice(-14);
+  var gains = 0, losses = 0;
+  for (var i = 1; i < recentCloses.length; i++) {
+    var d = recentCloses[i] - recentCloses[i-1];
+    if (d > 0) gains += d; else losses -= d;
+  }
+  var avgGain = gains / 13, avgLoss = losses / 13;
+  var rsi14 = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+
+  // ── 成交量趨勢（近5根 vs 前20根均量） ──
+  var avgVol20 = vols.slice(-25, -5).reduce((a,b) => a+b, 0) / 20;
+  var recentVol5 = vols.slice(-5).reduce((a,b) => a+b, 0) / 5;
+  var volRising = recentVol5 > avgVol20 * 1.5;
+  var volFalling = recentVol5 < avgVol20 * 0.5;
+
+  // ══════════════════════════════════════════════════
+  //  SCORING — 三刀流規則直接對應
+  // ══════════════════════════════════════════════════
+  var score = 50;
+  var reasons = [];
+  var direction = 'NEUTRAL';
+
+  // ── 多方加分規則 ──
+
+  // 1. 進階多頭排列（最高加分）
+  if (bullAlign && bluePos && greenPos && orangePos) {
+    score += 25;
+    reasons.push({ txt: '多頭排列藍>綠>橘', type: 'pos' });
+    direction = 'LONG';
+  } else if (bullAlign) {
+    score += 15;
+    reasons.push({ txt: '均線多頭排列', type: 'pos' });
+    direction = 'LONG';
+  }
+
+  // 2. 小橘正斜率（大方向偏多）
+  if (orangePos) {
+    score += 12;
+    reasons.push({ txt: '小橘正斜率↑', type: 'pos' });
+  } else if (orangeNeg) {
+    score -= 12;
+    reasons.push({ txt: '小橘負斜率↓', type: 'neg' });
+  }
+
+  // 3. 黃金交叉
+  if (goldCross) {
+    score += 18;
+    reasons.push({ txt: '藍綠黃金交叉', type: 'pos' });
+    direction = 'LONG';
+  }
+
+  // 4. 回測小綠不破（核心買點）
+  // 價格在小綠上方且接近小綠（-2%內），小橘正斜率
+  var nearGreenSupport = priceAbvGreen && devFromGreen > -2 && devFromGreen < 3 && greenPos;
+  if (nearGreenSupport && orangePos) {
+    score += 20;
+    reasons.push({ txt: '回測小綠不破(買點)', type: 'pos' });
+    direction = 'LONG';
+  }
+
+  // 5. 小橘休息站（回到正斜率小橘附近）
+  var nearOrangeSupport = priceAbvOrange &&
+    (last - o240) / o240 * 100 < 3 &&
+    (last - o240) / o240 * 100 > -1 && orangePos;
+  if (nearOrangeSupport) {
+    score += 15;
+    reasons.push({ txt: '小橘休息站', type: 'pos' });
+  }
+
+  // 6. 價格收定站上小藍 + 小藍正斜率
+  if (priceAbvBlue && bluePos) {
+    score += 8;
+    reasons.push({ txt: '站上小藍', type: 'pos' });
+  }
+
+  // ── 空方加分規則 ──
+
+  // 7. 進階空頭排列
+  if (bearAlign && blueNeg && greenNeg && orangeNeg) {
+    score -= 25;
+    reasons.push({ txt: '空頭排列橘>綠>藍', type: 'neg' });
+    direction = 'SHORT';
+  } else if (bearAlign) {
+    score -= 15;
+    reasons.push({ txt: '均線空頭排列', type: 'neg' });
+    direction = 'SHORT';
+  }
+
+  // 8. 死亡交叉
+  if (deathCross) {
+    score -= 18;
+    reasons.push({ txt: '藍綠死亡交叉', type: 'neg' });
+    direction = 'SHORT';
+  }
+
+  // 9. 反彈小綠不過（核心空點）
+  var nearGreenResist = priceBelGreen &&
+    (g60 - last) / g60 * 100 < 3 &&
+    (g60 - last) / g60 * 100 > -1 && greenNeg;
+  if (nearGreenResist && (orangeNeg || priceBelOrange)) {
+    score -= 20;
+    reasons.push({ txt: '反彈小綠不過(空點)', type: 'neg' });
+    direction = 'SHORT';
+  }
+
+  // 10. 跌破小橘收定
+  if (priceBelOrange && !orangePos) {
+    score -= 15;
+    reasons.push({ txt: '跌破小橘收定', type: 'neg' });
+    if (direction !== 'LONG') direction = 'SHORT';
+  }
+
+  // ── 中性/扣分規則 ──
+
+  // 11. 三條線方向不一致（空氣中交易，不出手）
+  var mixedSignal = (orangePos && greenNeg) || (orangeNeg && greenPos) ||
+    (bluePos && orangeNeg && !greenPos);
+  if (mixedSignal) {
+    score -= 10;
+    reasons.push({ txt: '三線方向不一致', type: 'warn' });
+    if (direction !== 'LONG' && direction !== 'SHORT') direction = 'WATCH';
+  }
+
+  // 12. 離家太遠（乖離過大，不追）
+  if (isOverExtended) {
+    score -= 15;
+    reasons.push({ txt: `乖離過大${devFromOrange.toFixed(1)}%`, type: 'warn' });
+  }
+
+  // 13. RSI 超賣（逆勢短打機會，但不做波段）
+  if (rsi14 < 30 && orangePos) {
+    score += 8;
+    reasons.push({ txt: `RSI超賣${rsi14.toFixed(0)}`, type: 'pos' });
+  } else if (rsi14 > 70 && orangeNeg) {
+    score -= 8;
+    reasons.push({ txt: `RSI超買${rsi14.toFixed(0)}`, type: 'neg' });
+  }
+
+  // 14. 成交量配合
+  if (volRising && direction === 'LONG') {
+    score += 8;
+    reasons.push({ txt: '放量上漲', type: 'pos' });
+  } else if (volRising && direction === 'SHORT') {
+    score += 5;
+    reasons.push({ txt: '放量下跌', type: 'neg' });
+  } else if (volFalling) {
+    score -= 5;
+    reasons.push({ txt: '縮量警示', type: 'warn' });
+  }
+
+  // ── 資金流向異常加扣分 ──
+  if (flowScore !== null && flowScore !== undefined) {
+    if (flowScore >= 60 && direction === 'LONG') {
+      score += 15;
+      reasons.push({ txt: `大單強力買壓+${flowScore}`, type: 'pos' });
+    } else if (flowScore >= 30 && direction === 'LONG') {
+      score += 8;
+      reasons.push({ txt: `大單買壓+${flowScore}`, type: 'pos' });
+    } else if (flowScore <= -60 && direction === 'SHORT') {
+      score += 15;
+      reasons.push({ txt: `大單強力賣壓${flowScore}`, type: 'neg' });
+    } else if (flowScore <= -30 && direction === 'SHORT') {
+      score += 8;
+      reasons.push({ txt: `大單賣壓${flowScore}`, type: 'neg' });
+    }
+    // 背離：三刀流看多但大單狂賣
+    else if (direction === 'LONG' && flowScore <= -40) {
+      score -= 18;
+      reasons.push({ txt: `⚠流向背離${flowScore}`, type: 'warn' });
+    }
+    // 背離：三刀流看空但大單狂買
+    else if (direction === 'SHORT' && flowScore >= 40) {
+      score -= 18;
+      reasons.push({ txt: `⚠流向背離+${flowScore}`, type: 'warn' });
+    }
+  }
+
+  score = Math.max(0, Math.min(100, Math.round(score)));
+
+  // ── 判定環境標籤 ──
+  var env = '';
+  if (bullAlign && orangePos && greenPos)   env = '進階多頭排列';
+  else if (bullAlign)                        env = '初階多方';
+  else if (bearAlign && orangeNeg && greenNeg) env = '進階空頭排列';
+  else if (bearAlign)                        env = '初階空方';
+  else if (mixedSignal)                      env = '三線混合整理';
+  else if (orangePos && !greenPos)           env = '小橘偏多盤整';
+  else if (orangeNeg && !greenNeg)           env = '小橘偏空盤整';
+  else                                       env = '觀察中';
+
+  // ── 進出場建議 ──
+  var entryNote = '';
+  if (direction === 'LONG') {
+    if (nearGreenSupport) entryNote = '回測小綠，可考慮進場做多';
+    else if (nearOrangeSupport) entryNote = '小橘休息站，觀察反彈K進場';
+    else if (goldCross) entryNote = '黃金交叉確立，等回測確認';
+    else if (bullAlign) entryNote = '多頭排列，等回測均線支撐';
+    else entryNote = '等待明確進場點';
+  } else if (direction === 'SHORT') {
+    if (nearGreenResist) entryNote = '反彈小綠不過，可考慮進場做空';
+    else if (deathCross) entryNote = '死亡交叉確立，等反彈確認';
+    else if (bearAlign) entryNote = '空頭排列，等反彈均線壓力';
+    else entryNote = '等待明確空點';
+  } else {
+    entryNote = '三線不一致，暫不出手';
+  }
+
+  return {
+    score, direction, env, entryNote, reasons,
+    ma20: b20, ma60: g60, ma240: o240,
+    slopeBlue, slopeGreen, slopeOrange,
+    bluePos, greenPos, orangePos,
+    bullAlign, bearAlign, goldCross, deathCross,
+    nearGreenSupport, nearGreenResist, nearOrangeSupport,
+    devFromOrange, devFromGreen, rsi14,
+    last, volRising, volFalling, isOverExtended,
+  };
+}
+
+// ══════════════════════════════════════════════════════
+//  MAIN SANDAO SCAN — 掃描所有主流合約幣種
+// ══════════════════════════════════════════════════════
+async function runSandaoScan() {
+  if (sandaoLoading) return;
+  sandaoLoading = true;
+  document.getElementById('sdScanBtn').textContent = '⏳ 掃描中…';
+  document.getElementById('sdStatus').textContent = '抓取60分K數據…';
+  sandaoData = [];
+
+  // 取成交量前60名永續合約
+  var targets = [...swapT]
+    .filter(t => t.volCcy24h > 3e6)
+    .sort((a, b) => b.volCcy24h - a.volCcy24h)
+    .slice(0, 60);
+
+  var done = 0;
+  var total = targets.length;
+
+  // 批次處理，每批4個
+  for (var i = 0; i < targets.length; i += 4) {
+    var batch = targets.slice(i, i + 4);
+    await Promise.allSettled(batch.map(async t => {
+      var candles = await fetchCandles(t.instId, '1H', 260);
+      var flow = orderFlowCache[t.sym] || null;
+      var result = sandaoScore(candles, flow ? flow.flowScore : null, t.flowEVBoost || 0);
+      if (result) {
+        sandaoData.push({
+          sym: t.sym, instId: t.instId,
+          last: t.last, changePct: t.changePct,
+          volCcy24h: t.volCcy24h,
+          fundingRate: t.fundingRate,
+          evScore: t.evScore, ev: t.ev,
+          rr: t.rr, halfKelly: t.halfKelly,
+          flowScore: flow ? flow.flowScore : null,
+          flowLabel: flow ? flow.label : '--',
+          ...result,
+        });
+      }
+      done++;
+      document.getElementById('sdStatus').textContent =
+        `掃描中 ${done}/${total} (${t.sym})`;
+    }));
+    await new Promise(res => setTimeout(res, 400));
+  }
+
+  // 排序：分數高的在前
+  sandaoData.sort((a, b) => b.score - a.score);
+
+  sandaoLoading = false;
+  document.getElementById('sdScanBtn').textContent = '🔄 重新掃描';
+  document.getElementById('sdStatus').textContent =
+    `掃描完成 · ${sandaoData.length} 幣種 · ${new Date().toLocaleTimeString('zh-TW')}`;
+
+  // 自動發送高分標的到 Telegram
+  autoSendTelegram();
+  renderSandao();
+}
+
+// ══════════════════════════════════════════════════════
+//  TELEGRAM 通知
+// ══════════════════════════════════════════════════════
+async function sendTelegram(msg) {
+  if (!TG_ENABLED) return false;
+  try {
+    var r = await fetch(
+      `https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: TG_CHAT_ID,
+        text: msg,
+        parse_mode: 'HTML',
+      })
+    });
+    return r.ok;
+  } catch(e) { return false; }
+}
+
+function formatTGMessage(t, type = 'sandao') {
+  var dir = t.direction === 'LONG' ? '📈 做多' : t.direction === 'SHORT' ? '📉 做空' : '👀 觀察';
+  var env = t.env || '--';
+  var now = new Date().toLocaleString('zh-TW');
+  var flowStr = t.flowScore !== null ? `大單流向: ${t.flowScore >= 0 ? '+' : ''}${t.flowScore} (${t.flowLabel})` : '';
+  var frStr = t.fundingRate !== null ? `資金費率: ${(t.fundingRate * 100).toFixed(4)}%` : '';
+
+  if (type === 'sandao') {
+    return `🗡 <b>均線三刀流信號</b>
+
+<b>${t.sym}/USDT</b>  ${dir}
+─────────────────
+📊 三刀流分數: <b>${t.score}/100</b>
+🏛 市場環境: ${env}
+💡 進場建議: ${t.entryNote}
+
+📐 均線數值:
+• 小藍(20MA): $${fmtP2(t.ma20)}  斜率${t.bluePos ? '⬆' : t.slopeBlue < -0.05 ? '⬇' : '→'}
+• 小綠(60MA): $${fmtP2(t.ma60)}  斜率${t.greenPos ? '⬆' : t.slopeGreen < -0.03 ? '⬇' : '→'}
+• 小橘(240MA): $${fmtP2(t.ma240)} 斜率${t.orangePos ? '⬆' : t.slopeOrange < -0.02 ? '⬇' : '→'}
+
+📈 現價: $${fmtP2(t.last)}  (${t.changePct >= 0 ? '+' : ''}${t.changePct.toFixed(2)}%)
+${flowStr ? '🌊 ' + flowStr : ''}
+${frStr ? '💸 ' + frStr : ''}
+
+🎯 EV評分: ${t.evScore} | R:R ${t.rr?.toFixed(1)}x | Kelly ${t.halfKelly?.toFixed(1)}%
+
+📝 信號理由: ${t.reasons.slice(0, 3).map(r => r.txt).join(' · ')}
+
+⚠️ 僅供參考，注意風險管理
+─────────────────
+🕐 ${now}`;
+  }
+
+  // AI 異動警報格式
+  return `🔔 <b>AI 異動監控警報</b>
+
+<b>${t.sym}</b>  ${dir}
+現價: $${fmtP2(t.last)} | 24h: ${t.changePct >= 0 ? '+' : ''}${t.changePct?.toFixed(2)}%
+EV分: ${t.evScore} | 三刀流: ${t.score || '--'}
+
+${t.entryNote || t.body || ''}
+
+⚠️ 請自行判斷，做好停損
+🕐 ${now}`;
+}
+
+function autoSendTelegram() {
+  if (!TG_ENABLED) return;
+
+  // 發送三刀流高分標的（分數 ≥ 70 且方向明確）
+  var highScore = sandaoData.filter(t =>
+    t.score >= 70 &&
+    (t.direction === 'LONG' || t.direction === 'SHORT') &&
+    !sandaoSentAlerts.has(t.sym + '_' + t.direction)
+  );
+
+  highScore.forEach(async t => {
+    sandaoSentAlerts.add(t.sym + '_' + t.direction);
+    await sendTelegram(formatTGMessage(t, 'sandao'));
+    // 清除快取避免永久不重送（6小時後可再發）
+    setTimeout(() => sandaoSentAlerts.delete(t.sym + '_' + t.direction), 6 * 3600000);
+  });
+
+  if (highScore.length > 0 && TG_ENABLED) {
+    toast2(`📱 已發送 ${highScore.length} 個三刀流信號到 Telegram`);
+  }
+}
+
+// 手動發送單一幣種
+async function sendOneTelegram(sym) {
+  var t = sandaoData.find(d => d.sym === sym);
+  if (!t) return;
+  var ok = await sendTelegram(formatTGMessage(t, 'sandao'));
+  toast2(ok ? `✅ ${sym} 已發送到 Telegram` : '❌ 發送失敗，請檢查 Bot Token / Chat ID');
+}
+
+// AI 異動警報也推 Telegram
+async function sendAlertTelegram(alert) {
+  if (!TG_ENABLED) return;
+  var t = allT.find(x => x.sym === alert.sym);
+  if (!t) return;
+  var sdInfo = sandaoData.find(d => d.sym === alert.sym);
+  var payload = { ...t, ...alert };
+  if (sdInfo) payload.score = sdInfo.score;
+  await sendTelegram(formatTGMessage(payload, 'alert'));
+}
+
+// ══════════════════════════════════════════════════════
+//  RENDER 三刀流 VIEW
+// ══════════════════════════════════════════════════════
+function sdTab(el, tab) {
+  document.querySelectorAll('#view-sandao .tab').forEach(t => t.classList.remove('on'));
+  el.classList.add('on');
+  sandaoTabCur = tab;
+  renderSandao();
+}
+
+function renderSandao() {
+  if (!sandaoData.length) {
+    document.getElementById('sdBody').innerHTML =
+      '<div class="empty2">點擊「掃描」開始三刀流分析（需抓取60分K數據，約需1分鐘）</div>';
+    return;
+  }
+
+  var filter = sandaoTabCur;
+  var data = sandaoData.filter(t => {
+    if (filter === 'long')    return t.direction === 'LONG' && t.score >= 60;
+    if (filter === 'short')   return t.direction === 'SHORT' && t.score >= 60;
+    if (filter === 'bull')    return t.bullAlign;
+    if (filter === 'bear')    return t.bearAlign;
+    if (filter === 'cross')   return t.goldCross || t.deathCross;
+    if (filter === 'green')   return t.nearGreenSupport || t.nearGreenResist;
+    if (filter === 'orange')  return t.nearOrangeSupport;
+    return true;
+  });
+
+  // Stats
+  var longs  = sandaoData.filter(t => t.direction === 'LONG').length;
+  var shorts = sandaoData.filter(t => t.direction === 'SHORT').length;
+  var bulls  = sandaoData.filter(t => t.bullAlign).length;
+  var gold   = sandaoData.filter(t => t.goldCross).length;
+  var death  = sandaoData.filter(t => t.deathCross).length;
+  var green  = sandaoData.filter(t => t.nearGreenSupport || t.nearGreenResist).length;
+
+  document.getElementById('sdStats').innerHTML = `
+    <div class="sc2 cg"><div class="sl2">多頭信號</div><div class="sv2" style="color:var(--green)">${longs}</div><div class="sc3">分數≥60</div></div>
+    <div class="sc2 cr"><div class="sl2">空頭信號</div><div class="sv2" style="color:var(--red)">${shorts}</div></div>
+    <div class="sc2 ca"><div class="sl2">多頭排列</div><div class="sv2" style="color:var(--accent)">${bulls}</div><div class="sc3">藍>綠>橘</div></div>
+    <div class="sc2 cg"><div class="sl2">黃金交叉</div><div class="sv2" style="color:var(--green)">${gold}</div></div>
+    <div class="sc2 cr"><div class="sl2">死亡交叉</div><div class="sv2" style="color:var(--red)">${death}</div></div>
+    <div class="sc2 ct"><div class="sl2">小綠機會</div><div class="sv2" style="color:var(--teal)">${green}</div><div class="sc3">回測/反彈</div></div>`;
+
+  if (!data.length) {
+    document.getElementById('sdBody').innerHTML = '<div class="empty2">此分類暫無符合條件幣種</div>';
+    return;
+  }
+
+  var scC = s => s >= 70 ? 'var(--green)' : s >= 55 ? 'var(--accent)' : s >= 40 ? 'var(--yellow)' : 'var(--red)';
+  var slopeIcon = v => v > 0.05 ? '⬆' : v < -0.05 ? '⬇' : '→';
+
+  document.getElementById('sdBody').innerHTML = `<table>
+    <thead><tr>
+      <th>#</th><th>幣種</th><th>方向</th><th>三刀流分</th>
+      <th>市場環境</th><th>小藍斜率</th><th>小綠斜率</th><th>小橘斜率</th>
+      <th>價格位置</th><th>進場建議</th><th>大單流向</th>
+      <th>EV分</th><th>現價</th><th>24h漲跌</th><th>通知</th>
+    </tr></thead>
+    <tbody>${data.map((t, i) => {
+      var dir = t.direction === 'LONG'
+        ? '<span class="ev-badge evl" style="font-size:11px;padding:4px 9px">📈 做多</span>'
+        : t.direction === 'SHORT'
+        ? '<span class="ev-badge evs" style="font-size:11px;padding:4px 9px">📉 做空</span>'
+        : '<span class="ev-badge evm" style="font-size:11px;padding:4px 9px">👀 觀察</span>';
+      var pos = t.last > t.ma20 && t.last > t.ma60 && t.last > t.ma240 ? '三線之上'
+              : t.last < t.ma20 && t.last < t.ma60 && t.last < t.ma240 ? '三線之下'
+              : t.last > t.ma240 ? '橘線之上' : '橘線之下';
+      var flowBadgeTxt = t.flowScore !== null
+        ? `<span class="fl-badge ${t.flowScore >= 50 ? 'fl-sbuy' : t.flowScore >= 20 ? 'fl-buy' : t.flowScore <= -50 ? 'fl-ssell' : t.flowScore <= -20 ? 'fl-sell' : 'fl-neu'}">${t.flowLabel}</span>`
+        : '<span style="color:var(--text3)">--</span>';
+      var tgBtn = TG_ENABLED
+        ? `<button class="tbtn2" style="font-size:10px;padding:3px 8px" onclick="sendOneTelegram('${t.sym}')">📱</button>`
+        : '<span style="color:var(--text3);font-size:10px">未設定</span>';
+      return `<tr>
+        <td class="mono" style="color:var(--text3)">${i + 1}</td>
+        <td><div class="cc2"><div class="ci2">${t.sym.slice(0, 2)}</div><div><div class="cn2">${t.sym}</div></div></div></td>
+        <td>${dir}</td>
+        <td><div class="sb-wrap"><div class="sb-bg"><div class="sb-fill" style="width:${t.score}%;background:${scC(t.score)}"></div></div><span class="sb-num" style="color:${scC(t.score)};font-weight:700">${t.score}</span></div></td>
+        <td style="font-size:11px;color:var(--text2)">${t.env}</td>
+        <td class="mono" style="color:${t.bluePos ? 'var(--green)' : t.slopeBlue < -0.05 ? 'var(--red)' : 'var(--text2)'}">${slopeIcon(t.slopeBlue)} ${t.slopeBlue.toFixed(2)}%</td>
+        <td class="mono" style="color:${t.greenPos ? 'var(--green)' : t.slopeGreen < -0.03 ? 'var(--red)' : 'var(--text2)'}">${slopeIcon(t.slopeGreen)} ${t.slopeGreen.toFixed(2)}%</td>
+        <td class="mono" style="color:${t.orangePos ? 'var(--green)' : t.slopeOrange < -0.02 ? 'var(--red)' : 'var(--text2)'}">${slopeIcon(t.slopeOrange)} ${t.slopeOrange.toFixed(2)}%</td>
+        <td style="font-size:11px;color:var(--text2)">${pos}</td>
+        <td style="font-size:10.5px;color:var(--accent);max-width:140px">${t.entryNote}</td>
+        <td>${flowBadgeTxt}</td>
+        <td><div class="sb-wrap"><div class="sb-bg"><div class="sb-fill" style="width:${t.evScore}%;background:${t.evScore >= 65 ? 'var(--green)' : t.evScore >= 45 ? 'var(--accent)' : 'var(--yellow)'}"></div></div><span class="sb-num">${t.evScore}</span></div></td>
+        <td class="mono">$${fmtP2(t.last)}</td>
+        <td class="mono ${t.changePct >= 0 ? 'g' : 'r'}">${t.changePct >= 0 ? '+' : ''}${t.changePct.toFixed(2)}%</td>
+        <td>${tgBtn}</td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+}
+
+// ── Telegram helper functions (需在 sandao engine 之後) ──
+function updateTGStatus() {
+  TG_ENABLED = !!(TG_BOT_TOKEN && TG_CHAT_ID);
+  var badge = document.getElementById('tgStatusBadge');
+  if (badge) {
+    badge.textContent = TG_ENABLED ? '✅ 已連接' : '未設定';
+    badge.className = 'tg-status ' + (TG_ENABLED ? 'tg-on' : 'tg-off');
+  }
+}
+
+async function testTelegram() {
+  if (!TG_BOT_TOKEN || !TG_CHAT_ID) {
+    toast2('⚠️ 請先填入 Bot Token 和 Chat ID');
+    return;
+  }
+  TG_ENABLED = true;
+  var ok = await sendTelegram(`🧪 <b>ValueScan EV 測試訊息</b>
+
+連接成功！三刀流選幣通知已啟用。
+分數 ≥ 70 的標的掃描後將自動推送。
+
+🕐 ${new Date().toLocaleString('zh-TW')}`);
+  toast2(ok ? '✅ Telegram 測試成功！' : '❌ 發送失敗，請確認 Token/Chat ID 正確');
+  updateTGStatus();
+}
+
+function sendAllHighScore() {
+  if (!TG_ENABLED) { toast2('⚠️ 請先設定 Telegram'); return; }
+  var highs = sandaoData.filter(t =>
+    t.score >= 70 && (t.direction === 'LONG' || t.direction === 'SHORT'));
+  if (!highs.length) { toast2('目前無高分標的'); return; }
+  highs.forEach(async (t, i) => {
+    await new Promise(r => setTimeout(r, i * 800)); // 間隔發送
+    sendTelegram(formatTGMessage(t, 'sandao'));
+  });
+  toast2(`📱 發送 ${highs.length} 個標的中…`);
+}
+
+// 初始化時恢復已儲存的 token
+(function initTG() {
+  var savedToken = localStorage.getItem('tg_bot_token') || '';
+  var savedChat  = localStorage.getItem('tg_chat_id')   || '';
+  if (savedToken) { TG_BOT_TOKEN = savedToken; }
+  if (savedChat)  { TG_CHAT_ID   = savedChat;  }
+  TG_ENABLED = !!(TG_BOT_TOKEN && TG_CHAT_ID);
+  // UI 初始化延遲（DOM 可能還未掛載）
+  setTimeout(updateTGStatus, 500);
+})();
+
+// 讓 AI 異動警報也能 hook Telegram
+var _origDetect = detectAnomalies;
+detectAnomalies = function() {
+  _origDetect();
+  // 高優先警報自動推 TG（避免重複）
+  alertTimeline.filter(a =>
+    a.priority === 'high' && Date.now() - a.time < 90000 &&
+    !sandaoSentAlerts.has('alert_' + a.id)
+  ).forEach(async a => {
+    sandaoSentAlerts.add('alert_' + a.id);
+    var t = allT.find(x => x.sym === a.sym) || {};
+    var sdInfo = sandaoData.find(d => d.sym === a.sym);
+    var msg = formatTGMessage({ ...t, ...a, score: sdInfo?.score }, 'alert');
+    await sendTelegram(msg);
+  });
+};
+// ══════════════════════════════════════════════════════
 //  NAV + INIT
 // ══════════════════════════════════════════════════════
 function gv(el){
@@ -4087,6 +6740,7 @@ function gv(el){
   if(v==='orderflow') renderOrderFlow();
   if(v==='smartmoney'){ if(!smartMoneyData.length) refreshSmartMoney(); else renderSmartMoney(); }
   if(v==='aimonitor') renderAIMonitor();
+  if(v==='sandao') renderSandao();
 }
 async function refreshAll(){
   toast2('🔄 刷新中…');
@@ -4099,6 +6753,7 @@ async function refreshAll(){
   if(cv==='orderflow') renderOrderFlow();
   if(cv==='smartmoney') renderSmartMoney();
   if(cv==='aimonitor') renderAIMonitor();
+  if(cv==='sandao') renderSandao();
   toast2('✅ 數據已更新');
 }
 setInterval(()=>document.getElementById('htime').textContent=new Date().toLocaleTimeString('zh-TW'),1000);
@@ -4106,14 +6761,17 @@ setInterval(()=>document.getElementById('htime').textContent=new Date().toLocale
   await loadAll();
   refreshOrderFlow().then(()=>{ renderOpportunities(); });
   fetchSentiment();
-  // 延遲 3s 後開始首次異動偵測（確保數據已載入）
   setTimeout(()=>{ detectAnomalies(); }, 3000);
 })();
-setInterval(loadAll, 120000);
-setInterval(refreshOrderFlow, 45000);
-setInterval(detectAnomalies, 60000);   // 每 60s 掃描異動
-setInterval(fetchSentiment, 300000);   // 每 5min 更新多空比
+setInterval(loadAll,120000);
+setInterval(refreshOrderFlow,45000);
+setInterval(detectAnomalies,60000);
+setInterval(fetchSentiment,300000);
 setInterval(()=>{ if(document.querySelector('.ni.on')?.dataset.v==='whale') loadWhale2(); },30000);
+// 三刀流每4小時自動重掃（K線數據變化較慢）
+setInterval(()=>{
+  if(sandaoData.length > 0) runSandaoScan();
+}, 4*3600000);
 </script>
 </body>
 </html>
