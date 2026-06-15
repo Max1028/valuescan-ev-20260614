@@ -544,7 +544,8 @@ td{padding:8px 12px;font-size:12.5px;vertical-align:middle;}
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <button class="tbtn2" onclick="testTelegram()">📨 測試發送</button>
       <button class="tbtn2" onclick="sendAllHighScore()">📢 發送全部高分標的</button>
-      <span style="font-size:10.5px;color:var(--text3)">立即可做 + 分數≥65 者自動通知</span>
+      <button class="tbtn2 on" id="autoScanBtn" onclick="toggleAutoScan()">🟢 自動掃描:開</button>
+      <span style="font-size:10.5px;color:var(--text3)">每小時自動掃描+推送（需保持分頁開啟）</span>
     </div>
   </div>
   <div class="sr2" id="sdStats"></div>
@@ -2370,329 +2371,390 @@ function calcSlope(maArr, n=5) {
 // ══════════════════════════════════════════════════════
 //  CORE 三刀流 SCORING ENGINE
 // ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+//  三刀流進階心法輔助函式（基於教材完整規則）
+// ══════════════════════════════════════════════════════
+
+// ── 均線扣抵戰法（教材第九章）──
+// 扣抵值 = 計算均線時「即將被移除」的那根K的收盤
+// 扣低時間：扣抵值在低價區 + 現價>扣抵值 → 均線易上彎(做多有利)
+// 扣高時間：扣抵值在高價區 + 現價<扣抵值 → 均線易下彎(做空有利)
+function calcKoudi(closes, period) {
+  var n = closes.length;
+  if (n < period + 5) return { state: 'none', bias: 0 };
+  var last = closes[n-1];
+  // 接下來會被扣掉的值（最舊的那根，即 n-period）
+  var koudiVal = closes[n - period];
+  // 未來5根會扣到的區間
+  var futureKoudi = closes.slice(n - period, n - period + 5);
+  var avgFuture = futureKoudi.reduce((a,b)=>a+b,0) / futureKoudi.length;
+  // 判斷扣抵值在近期是高還低
+  var recentRange = closes.slice(-period);
+  var hi = Math.max.apply(null, recentRange);
+  var lo = Math.min.apply(null, recentRange);
+  var pos = (avgFuture - lo) / (hi - lo + 1e-9); // 扣抵值在區間位置 0~1
+  var bias = 0, state = 'neutral';
+  if (pos < 0.35 && last > avgFuture) { state = '扣低時間'; bias = 1; }   // 易上彎
+  else if (pos > 0.65 && last < avgFuture) { state = '扣高時間'; bias = -1; } // 易下彎
+  return { state: state, bias: bias, koudiVal: avgFuture, pos: pos };
+}
+
+// ── 進三退一趨勢健康度（教材語錄）──
+// 計算最近的「推進段」與「回檔段」比例，健康的趨勢是進多退少
+function calcTrendHealth(candles, dir) {
+  var closes = candles.map(c => c.close);
+  var n = closes.length;
+  var seg = closes.slice(-40);
+  var advances = 0, declines = 0;
+  for (var i = 1; i < seg.length; i++) {
+    var d = seg[i] - seg[i-1];
+    if (d > 0) advances += d; else declines -= d;
+  }
+  if (dir === 'LONG') {
+    var ratio = declines > 0 ? advances / declines : 3;
+    return { healthy: ratio > 1.5, ratio: ratio, note: ratio > 2 ? '推進強(進三退一)' : ratio > 1.5 ? '推進健康' : '回檔過深' };
+  } else {
+    var ratio2 = advances > 0 ? declines / advances : 3;
+    return { healthy: ratio2 > 1.5, ratio: ratio2, note: ratio2 > 2 ? '下跌強' : ratio2 > 1.5 ? '下跌健康' : '反彈過強' };
+  }
+}
+
+// ── 彈弓盤偵測（教材語錄）──
+// 開高後瞬間跳水急殺，若拉回平盤或平盤之上 → 容易收高
+function detectSlingshot(candles) {
+  var n = candles.length;
+  if (n < 6) return null;
+  var recent = candles.slice(-6);
+  // 找一根長下影且收回的K（下殺後拉回）
+  for (var i = recent.length - 3; i < recent.length; i++) {
+    var c = recent[i];
+    var body = Math.abs(c.close - c.open);
+    var lowerWick = Math.min(c.open, c.close) - c.low;
+    var range = c.high - c.low;
+    if (range > 0 && lowerWick > body * 1.5 && lowerWick / range > 0.5 && c.close >= c.open) {
+      return { found: true, note: '彈弓盤(急殺拉回)，易收高' };
+    }
+  }
+  return null;
+}
+
+// ── 反向運動頻率加快（教材第七章）轉折訊號 ──
+// 計算近期擺動點的時間間隔是否縮短
+function calcReversalFreq(swingHighs, swingLows) {
+  var pts = [].concat(swingHighs || [], swingLows || []).sort((a,b)=>a.idx-b.idx);
+  if (pts.length < 4) return { accelerating: false };
+  var gaps = [];
+  for (var i = 1; i < pts.length; i++) gaps.push(pts[i].idx - pts[i-1].idx);
+  var firstHalf = gaps.slice(0, Math.floor(gaps.length/2));
+  var secondHalf = gaps.slice(Math.floor(gaps.length/2));
+  var avg1 = firstHalf.reduce((a,b)=>a+b,0)/firstHalf.length;
+  var avg2 = secondHalf.reduce((a,b)=>a+b,0)/secondHalf.length;
+  return { accelerating: avg2 < avg1 * 0.6, note: avg2 < avg1*0.6 ? '反向頻率加快,可能變盤' : '' };
+}
+
+// ── 順勢對稱 1:1 目標價（教材第五章）──
+// 初升段幅度 → 橫盤整理不破均線 → 抓等幅
+function calcSymmetryTarget(candles, dir, entry) {
+  var closes = candles.map(c => c.close);
+  var n = closes.length;
+  var seg = closes.slice(-60);
+  var lo = Math.min.apply(null, seg);
+  var hi = Math.max.apply(null, seg);
+  var firstLeg = hi - lo;
+  if (dir === 'LONG') {
+    return entry + firstLeg; // 等幅延伸
+  } else {
+    return entry - firstLeg;
+  }
+}
+
+// ── 抄底兩原則（教材第四章）──
+// 1. 空頭排列中未站上小藍前不抄底
+// 2. 抄底後若沒站回小橘，不宜抱久
+function checkBottomFishing(last, b20, o240, bearAlign) {
+  if (!bearAlign) return { allowed: true, note: '' };
+  if (last < b20) return { allowed: false, note: '空頭未站上小藍,禁止抄底' };
+  if (last < o240) return { allowed: true, weak: true, note: '已站上小藍但未回小橘,短打不抱久' };
+  return { allowed: true, note: '已站回小橘' };
+}
+
 function sandaoScore(candles, flowScore, flowEVBoost) {
   if (!candles || candles.length < 120) return null;
-  // 不足240根時用可得最長週期替代小橘
 
   var closes = candles.map(c => c.close);
   var vols   = candles.map(c => c.vol);
   var n = closes.length;
+  var last = closes[n-1];
 
-  // ── 計算三條均線 ──
-  var ma20  = calcMA(closes, 20);   // 小藍
-  var ma60  = calcMA(closes, 60);   // 小綠
-  var ma240 = calcMA(closes, Math.min(240, closes.length - 1));  // 小橘(資料不足時用可得最長)
-
-  var last  = closes[n-1];
-  var prev  = closes[n-2];
-  var b20   = ma20[n-1];   // 小藍現值
-  var g60   = ma60[n-1];   // 小綠現值
-  var o240  = ma240[n-1];  // 小橘現值
-  var pb20  = ma20[n-2];   // 小藍前值（判斷斜率）
-  var pg60  = ma60[n-2];
-  var po240 = ma240[n-2];
-
+  // ── 三條均線 ──
+  var ma20  = calcMA(closes, 20);
+  var ma60  = calcMA(closes, 60);
+  var ma240 = calcMA(closes, Math.min(240, n - 1));
+  var b20 = ma20[n-1], g60 = ma60[n-1], o240 = ma240[n-1];
   if (!b20 || !g60 || !o240) return null;
 
-  // ── 斜率判斷（正/負） ──
+  // ── 斜率 ──
   var slopeBlue   = calcSlope(ma20,  5);
   var slopeGreen  = calcSlope(ma60,  8);
   var slopeOrange = calcSlope(ma240, 10);
-  var bluePos   = slopeBlue   > 0.05;
-  var greenPos  = slopeGreen  > 0.03;
-  var orangePos = slopeOrange > 0.02;
-  var blueNeg   = slopeBlue   < -0.05;
-  var greenNeg  = slopeGreen  < -0.03;
-  var orangeNeg = slopeOrange < -0.02;
+  var bluePos   = slopeBlue   > 0.05,  blueNeg   = slopeBlue   < -0.05;
+  var greenPos  = slopeGreen  > 0.03,  greenNeg  = slopeGreen  < -0.03;
+  var orangePos = slopeOrange > 0.04,  orangeNeg = slopeOrange < -0.04;
 
-  // ── 均線排列 ──
-  // 進階多頭排列：小藍 > 小綠 > 小橘
-  var bullAlign    = b20 > g60 && g60 > o240;
-  // 進階空頭排列：小橘 > 小綠 > 小藍
-  var bearAlign    = o240 > g60 && g60 > b20;
-  // 初階：藍綠黃金/死亡交叉
-  var goldCross    = b20 > g60 && pb20 <= pg60; // 剛發生交叉
-  var deathCross   = b20 < g60 && pb20 >= pg60;
-  var blueAbvGreen = b20 > g60;
-  var blueBlwGreen = b20 < g60;
+  // ── 排列 ──
+  var bullAlign  = b20 > g60 && g60 > o240;
+  var bearAlign  = o240 > g60 && g60 > b20;
+  var pb20 = ma20[n-2], pg60 = ma60[n-2];
+  var goldCross  = b20 > g60 && pb20 <= pg60;
+  var deathCross = b20 < g60 && pb20 >= pg60;
 
-  // ── 價格位置（收定） ──
-  var priceAbvBlue   = last > b20;
-  var priceAbvGreen  = last > g60;
-  var priceAbvOrange = last > o240;
-  var priceBelBlue   = last < b20;
-  var priceBelGreen  = last < g60;
-  var priceBelOrange = last < o240;
-
-  // ── 乖離率 ──
+  // ── 價格位置 ──
   var devFromOrange = (last - o240) / o240 * 100;
   var devFromGreen  = (last - g60)  / g60  * 100;
-  var isOverExtended = devFromOrange > 25 || devFromOrange < -25; // 離家太遠
+  var devFromBlue   = (last - b20)  / b20  * 100;
+  var range24 = Math.max.apply(null, candles.slice(-24).map(c=>c.high)) - Math.min.apply(null, candles.slice(-24).map(c=>c.low));
 
-  // ── RSI 背離近似（用收盤價動能） ──
-  var recentCloses = closes.slice(-14);
-  var gains = 0, losses = 0;
-  for (var i = 1; i < recentCloses.length; i++) {
-    var d = recentCloses[i] - recentCloses[i-1];
-    if (d > 0) gains += d; else losses -= d;
-  }
-  var avgGain = gains / 13, avgLoss = losses / 13;
-  var rsi14 = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  // 回測支撐：價在小綠上方且貼近(-1.5%~+3%)，綠線正斜率
+  var nearGreenSupport = devFromGreen > -1.5 && devFromGreen < 3 && greenPos && last > g60 * 0.985;
+  var nearOrangeSupport = devFromOrange > -1 && devFromOrange < 3 && orangePos && last > o240 * 0.99;
+  var nearGreenResist  = devFromGreen < 1.5 && devFromGreen > -3 && greenNeg && last < g60 * 1.015;
 
-  // ── 成交量趨勢（近5根 vs 前20根均量） ──
-  var avgVol20 = vols.slice(-25, -5).reduce((a,b) => a+b, 0) / 20;
-  var recentVol5 = vols.slice(-5).reduce((a,b) => a+b, 0) / 5;
+  // ── 乖離過大 ──
+  var isOverExtended = Math.abs(devFromOrange) > 25 || Math.abs(devFromBlue) > 12;
+
+  // ── RSI ──
+  var rc = closes.slice(-14), gain=0, loss=0;
+  for (var i=1;i<rc.length;i++){var d=rc[i]-rc[i-1];if(d>0)gain+=d;else loss-=d;}
+  var avgG=gain/13, avgL=loss/13;
+  var rsi14 = avgL===0?100:100-100/(1+avgG/avgL);
+
+  // ── 成交量 ──
+  var avgVol20 = vols.slice(-25,-5).reduce((a,b)=>a+b,0)/20;
+  var recentVol5 = vols.slice(-5).reduce((a,b)=>a+b,0)/5;
   var volRising = recentVol5 > avgVol20 * 1.5;
   var volFalling = recentVol5 < avgVol20 * 0.5;
 
-  // ══════════════════════════════════════════════════
-  //  SCORING — 三刀流規則直接對應
-  // ══════════════════════════════════════════════════
-  var score = 50;
-  var reasons = [];
+  // ── 急漲急跌 ──
+  var c3 = closes[n-4] || closes[0];
+  var move3 = (last - c3) / c3 * 100;
+
+  // ── 形態識別 ──
+  var patternResult = detectPatterns(candles);
+  var patterns = patternResult.patterns;
+
+  // ══════════════════════════════════════════════════════
+  //  分層決策架構（層層遞進，不是加總）
+  // ══════════════════════════════════════════════════════
   var direction = 'NEUTRAL';
+  var tradeStatus = 'avoid';   // ready | wait | avoid
+  var tradeStatusText = '';
+  var entryNote = '';
+  var env = '';
+  var reasons = [];
+  var vetoReasons = [];
+  var score = 50;
 
-  // ── 多方加分規則 ──
+  // ── 第1層：大方向（小橘240斜率）── 走平不做
+  var bigTrend;
+  if (orangePos)      bigTrend = 'UP';
+  else if (orangeNeg) bigTrend = 'DOWN';
+  else                bigTrend = 'FLAT';
 
-  // 1. 進階多頭排列（最高加分）
-  if (bullAlign && bluePos && greenPos && orangePos) {
-    score += 25;
-    reasons.push({ txt: '多頭排列藍>綠>橘', type: 'pos' });
-    direction = 'LONG';
-  } else if (bullAlign) {
-    score += 15;
-    reasons.push({ txt: '均線多頭排列', type: 'pos' });
-    direction = 'LONG';
+  if (bigTrend === 'FLAT') {
+    // 小橘走平 → 教材：空氣中不交易
+    direction = 'NEUTRAL';
+    tradeStatus = 'avoid';
+    tradeStatusText = '🚫 小橘走平，方向不明不做';
+    env = '小橘走平盤整';
+    score = 35;
+    reasons.push({ txt: '小橘走平', type: 'warn' });
+    return buildResult();
   }
 
-  // 2. 小橘正斜率（大方向偏多）
-  if (orangePos) {
-    score += 12;
-    reasons.push({ txt: '小橘正斜率↑', type: 'pos' });
-  } else if (orangeNeg) {
-    score -= 12;
-    reasons.push({ txt: '小橘負斜率↓', type: 'neg' });
-  }
-
-  // 3. 黃金交叉
-  if (goldCross) {
-    score += 18;
-    reasons.push({ txt: '藍綠黃金交叉', type: 'pos' });
-    direction = 'LONG';
-  }
-
-  // 4. 回測小綠不破（核心買點）
-  // 價格在小綠上方且接近小綠（-2%內），小橘正斜率
-  var nearGreenSupport = priceAbvGreen && devFromGreen > -2 && devFromGreen < 3 && greenPos;
-  if (nearGreenSupport && orangePos) {
-    score += 20;
-    reasons.push({ txt: '回測小綠不破(買點)', type: 'pos' });
-    direction = 'LONG';
-  }
-
-  // 5. 小橘休息站（回到正斜率小橘附近）
-  var nearOrangeSupport = priceAbvOrange &&
-    (last - o240) / o240 * 100 < 3 &&
-    (last - o240) / o240 * 100 > -1 && orangePos;
-  if (nearOrangeSupport) {
-    score += 15;
-    reasons.push({ txt: '小橘休息站', type: 'pos' });
-  }
-
-  // 6. 價格收定站上小藍 + 小藍正斜率
-  if (priceAbvBlue && bluePos) {
-    score += 8;
-    reasons.push({ txt: '站上小藍', type: 'pos' });
-  }
-
-  // ── 空方加分規則 ──
-
-  // 7. 進階空頭排列
-  if (bearAlign && blueNeg && greenNeg && orangeNeg) {
-    score -= 25;
-    reasons.push({ txt: '空頭排列橘>綠>藍', type: 'neg' });
-    direction = 'SHORT';
-  } else if (bearAlign) {
-    score -= 15;
-    reasons.push({ txt: '均線空頭排列', type: 'neg' });
-    direction = 'SHORT';
-  }
-
-  // 8. 死亡交叉
-  if (deathCross) {
-    score -= 18;
-    reasons.push({ txt: '藍綠死亡交叉', type: 'neg' });
-    direction = 'SHORT';
-  }
-
-  // 9. 反彈小綠不過（核心空點）
-  var nearGreenResist = priceBelGreen &&
-    (g60 - last) / g60 * 100 < 3 &&
-    (g60 - last) / g60 * 100 > -1 && greenNeg;
-  if (nearGreenResist && (orangeNeg || priceBelOrange)) {
-    score -= 20;
-    reasons.push({ txt: '反彈小綠不過(空點)', type: 'neg' });
-    direction = 'SHORT';
-  }
-
-  // 10. 跌破小橘收定
-  if (priceBelOrange && !orangePos) {
-    score -= 15;
-    reasons.push({ txt: '跌破小橘收定', type: 'neg' });
-    if (direction !== 'LONG') direction = 'SHORT';
-  }
-
-  // ── 中性/扣分規則 ──
-
-  // 11. 三條線方向不一致（空氣中交易，不出手）
-  var mixedSignal = (orangePos && greenNeg) || (orangeNeg && greenPos) ||
-    (bluePos && orangeNeg && !greenPos);
-  if (mixedSignal) {
-    score -= 10;
-    reasons.push({ txt: '三線方向不一致', type: 'warn' });
-    if (direction !== 'LONG' && direction !== 'SHORT') direction = 'WATCH';
-  }
-
-  // 12. 離家太遠（乖離過大，不追）
-  if (isOverExtended) {
-    score -= 15;
-    reasons.push({ txt: `乖離過大${devFromOrange.toFixed(1)}%`, type: 'warn' });
-  }
-
-  // 13. RSI 超賣（逆勢短打機會，但不做波段）
-  if (rsi14 < 30 && orangePos) {
-    score += 8;
-    reasons.push({ txt: `RSI超賣${rsi14.toFixed(0)}`, type: 'pos' });
-  } else if (rsi14 > 70 && orangeNeg) {
-    score -= 8;
-    reasons.push({ txt: `RSI超買${rsi14.toFixed(0)}`, type: 'neg' });
-  }
-
-  // 14. 成交量配合
-  if (volRising && direction === 'LONG') {
-    score += 8;
-    reasons.push({ txt: '放量上漲', type: 'pos' });
-  } else if (volRising && direction === 'SHORT') {
-    score += 5;
-    reasons.push({ txt: '放量下跌', type: 'neg' });
-  } else if (volFalling) {
-    score -= 5;
-    reasons.push({ txt: '縮量警示', type: 'warn' });
-  }
-
-  // ── 資金流向異常加扣分 ──
-  if (flowScore !== null && flowScore !== undefined) {
-    if (flowScore >= 60 && direction === 'LONG') {
-      score += 15;
-      reasons.push({ txt: `大單強力買壓+${flowScore}`, type: 'pos' });
-    } else if (flowScore >= 30 && direction === 'LONG') {
-      score += 8;
-      reasons.push({ txt: `大單買壓+${flowScore}`, type: 'pos' });
-    } else if (flowScore <= -60 && direction === 'SHORT') {
-      score += 15;
-      reasons.push({ txt: `大單強力賣壓${flowScore}`, type: 'neg' });
-    } else if (flowScore <= -30 && direction === 'SHORT') {
-      score += 8;
-      reasons.push({ txt: `大單賣壓${flowScore}`, type: 'neg' });
+  // ── 第2層：環境確認（排列要與大方向一致）──
+  if (bigTrend === 'UP') {
+    if (bullAlign) {
+      direction = 'LONG';
+      env = (greenPos && bluePos) ? '進階多頭排列' : '初階多方';
+      score = 60;
+      reasons.push({ txt: '小橘正斜率↑', type: 'pos' });
+      reasons.push({ txt: bullAlign ? '多頭排列藍>綠>橘' : '多方', type: 'pos' });
+    } else {
+      // 小橘向上但未形成多頭排列 → 等排列
+      direction = 'LONG';
+      tradeStatus = 'wait';
+      tradeStatusText = '⏳ 小橘偏多，等均線多頭排列';
+      env = '小橘偏多盤整';
+      score = 48;
+      reasons.push({ txt: '小橘正斜率但未排列', type: 'warn' });
+      applyPatternsAndFlow();
+      return buildResult();
     }
-    // 背離：三刀流看多但大單狂賣
-    else if (direction === 'LONG' && flowScore <= -40) {
-      score -= 18;
-      reasons.push({ txt: `⚠流向背離${flowScore}`, type: 'warn' });
-    }
-    // 背離：三刀流看空但大單狂買
-    else if (direction === 'SHORT' && flowScore >= 40) {
-      score -= 18;
-      reasons.push({ txt: `⚠流向背離+${flowScore}`, type: 'warn' });
+  } else { // DOWN
+    if (bearAlign) {
+      direction = 'SHORT';
+      env = (greenNeg && blueNeg) ? '進階空頭排列' : '初階空方';
+      score = 60;
+      reasons.push({ txt: '小橘負斜率↓', type: 'neg' });
+      reasons.push({ txt: '空頭排列橘>綠>藍', type: 'neg' });
+    } else {
+      direction = 'SHORT';
+      tradeStatus = 'wait';
+      tradeStatusText = '⏳ 小橘偏空，等均線空頭排列';
+      env = '小橘偏空盤整';
+      score = 48;
+      reasons.push({ txt: '小橘負斜率但未排列', type: 'warn' });
+      applyPatternsAndFlow();
+      return buildResult();
     }
   }
 
+  // ── 第4層：否決層（任一觸發 → 不做）──
+  // 注意：先檢查否決，因為這比進場時機優先
+  function checkVetoes() {
+    // 主力大單反向
+    if (flowScore !== null && flowScore !== undefined) {
+      if (direction === 'LONG'  && flowScore <= -50) vetoReasons.push('主力強力賣壓' + flowScore);
+      if (direction === 'SHORT' && flowScore >= 50)  vetoReasons.push('主力強力買壓+' + flowScore);
+    }
+    // 急漲追多 / 急跌追空
+    if (direction === 'LONG'  && move3 > 7)  vetoReasons.push('急漲+' + move3.toFixed(1) + '%勿追');
+    if (direction === 'SHORT' && move3 < -7) vetoReasons.push('急跌' + move3.toFixed(1) + '%勿追');
+    // 乖離過大
+    if (isOverExtended) vetoReasons.push('乖離過大');
+    // 形態方向衝突
+    var conflict = patterns.find(p =>
+      (direction === 'LONG' && p.dir === 'SHORT') ||
+      (direction === 'SHORT' && p.dir === 'LONG'));
+    if (conflict) vetoReasons.push('形態衝突:' + conflict.name);
+  }
+
+  // ── 第3層：進場時機 + 形態/流向微調分數 ──
+  function applyPatternsAndFlow() {
+    // 同向形態加分（限制：最多 +12，避免堆疊）
+    var sameDir = patterns.filter(p => p.dir === direction);
+    if (sameDir.length > 0) {
+      score += Math.min(12, sameDir.length * 6);
+      sameDir.forEach(p => reasons.push({ txt: p.name, type: direction==='LONG'?'pos':'neg' }));
+    }
+    // 反向形態提示（不加分，記錄）
+    patterns.filter(p => p.dir !== direction && p.dir !== 'WATCH').forEach(p =>
+      reasons.push({ txt: '⚠' + p.name, type: 'warn' }));
+    // 大單流向同向加分
+    if (flowScore !== null) {
+      if (direction === 'LONG' && flowScore >= 30) { score += 8; reasons.push({txt:'大單買壓+'+flowScore,type:'pos'}); }
+      else if (direction === 'SHORT' && flowScore <= -30) { score += 8; reasons.push({txt:'大單賣壓'+flowScore,type:'neg'}); }
+    }
+    // 成交量
+    if (volRising) { score += 5; }
+    else if (volFalling) { score -= 3; reasons.push({txt:'縮量',type:'warn'}); }
+    // RSI 極值（順勢加分、逆勢扣）
+    if (direction === 'LONG' && rsi14 > 78) { score -= 5; reasons.push({txt:'RSI過熱'+rsi14.toFixed(0),type:'warn'}); }
+    if (direction === 'SHORT' && rsi14 < 22) { score -= 5; reasons.push({txt:'RSI超賣'+rsi14.toFixed(0),type:'warn'}); }
+  }
+
+  checkVetoes();
+  applyPatternsAndFlow();
+
+  // ══ 進階心法層 ══
+  // 1. 均線扣抵戰法（小藍進扣低時間做多有利／扣高時間做空有利）
+  var koudi = calcKoudi(closes, 20);
+  if (direction === 'LONG') {
+    if (koudi.bias === 1) { score += 8; reasons.push({txt:'小藍'+koudi.state+'易上彎',type:'pos'}); }
+    else if (koudi.bias === -1) { score -= 10; reasons.push({txt:'⚠小藍扣高,追多風險',type:'warn'}); }
+  } else if (direction === 'SHORT') {
+    if (koudi.bias === -1) { score += 8; reasons.push({txt:'小藍'+koudi.state+'易下彎',type:'neg'}); }
+    else if (koudi.bias === 1) { score -= 10; reasons.push({txt:'⚠小藍扣低,追空風險',type:'warn'}); }
+  }
+
+  // 2. 進三退一趨勢健康度
+  var health = calcTrendHealth(candles, direction);
+  if (health.healthy) { score += 6; reasons.push({txt:health.note,type:direction==='LONG'?'pos':'neg'}); }
+  else { score -= 6; reasons.push({txt:'⚠'+health.note,type:'warn'}); }
+
+  // 3. 彈弓盤（急殺拉回易收高）→ 多方加分
+  var sling = detectSlingshot(candles);
+  if (sling && direction === 'LONG') { score += 5; reasons.push({txt:sling.note,type:'pos'}); }
+
+  // 4. 反向運動頻率加快（變盤警示）
+  var revFreq = calcReversalFreq(patternResult.swingHighs, patternResult.swingLows);
+  if (revFreq.accelerating) { reasons.push({txt:'⚠'+revFreq.note,type:'warn'}); }
+
+  // 5. 抄底兩原則（空頭排列時的限制）
+  var bottomCheck = checkBottomFishing(last, b20, o240, bearAlign);
+  if (direction === 'LONG' && bearAlign && !bottomCheck.allowed) {
+    vetoReasons.push(bottomCheck.note);
+  } else if (direction === 'LONG' && bottomCheck.weak) {
+    reasons.push({txt:bottomCheck.note,type:'warn'});
+  }
+
+  // 6. 順勢對稱 1:1 目標價
+  var targetPrice = calcSymmetryTarget(candles, direction, last);
+
+  // ── 第5層：輸出決策 ──
+  if (vetoReasons.length > 0) {
+    tradeStatus = 'avoid';
+    tradeStatusText = '🚫 ' + vetoReasons[0];
+    score = Math.max(20, score - 20 * vetoReasons.length);
+    vetoReasons.forEach(v => reasons.push({ txt: v, type: 'warn' }));
+  } else if (direction === 'LONG') {
+    if (nearGreenSupport || nearOrangeSupport) {
+      tradeStatus = 'ready';
+      tradeStatusText = nearGreenSupport ? '✅ 回測小綠到位，可做多' : '✅ 小橘休息站，可做多';
+      score += 10;
+    } else if (devFromBlue > 4) {
+      // 價格已拉離小藍太多 → 等回測
+      tradeStatus = 'wait';
+      tradeStatusText = '⏳ 已離小藍' + devFromBlue.toFixed(1) + '%，等回測進場';
+    } else {
+      tradeStatus = 'wait';
+      tradeStatusText = '⏳ 多頭排列，等回測小綠/小藍';
+    }
+  } else if (direction === 'SHORT') {
+    if (nearGreenResist) {
+      tradeStatus = 'ready';
+      tradeStatusText = '✅ 反彈小綠不過，可做空';
+      score += 10;
+    } else if (devFromBlue < -4) {
+      tradeStatus = 'wait';
+      tradeStatusText = '⏳ 已離小藍' + devFromBlue.toFixed(1) + '%，等反彈放空';
+    } else {
+      tradeStatus = 'wait';
+      tradeStatusText = '⏳ 空頭排列，等反彈到壓力';
+    }
+  }
+
+  entryNote = tradeStatusText.replace(/^[✅⏳🚫]\s*/, '');
   score = Math.max(0, Math.min(100, Math.round(score)));
 
-  // ── 判定環境標籤 ──
-  var env = '';
-  if (bullAlign && orangePos && greenPos)   env = '進階多頭排列';
-  else if (bullAlign)                        env = '初階多方';
-  else if (bearAlign && orangeNeg && greenNeg) env = '進階空頭排列';
-  else if (bearAlign)                        env = '初階空方';
-  else if (mixedSignal)                      env = '三線混合整理';
-  else if (orangePos && !greenPos)           env = '小橘偏多盤整';
-  else if (orangeNeg && !greenNeg)           env = '小橘偏空盤整';
-  else                                       env = '觀察中';
+  return buildResult();
 
-  // ── 進出場建議 ──
-  var entryNote = '';
-  if (direction === 'LONG') {
-    if (nearGreenSupport) entryNote = '回測小綠，可考慮進場做多';
-    else if (nearOrangeSupport) entryNote = '小橘休息站，觀察反彈K進場';
-    else if (goldCross) entryNote = '黃金交叉確立，等回測確認';
-    else if (bullAlign) entryNote = '多頭排列，等回測均線支撐';
-    else entryNote = '等待明確進場點';
-  } else if (direction === 'SHORT') {
-    if (nearGreenResist) entryNote = '反彈小綠不過，可考慮進場做空';
-    else if (deathCross) entryNote = '死亡交叉確立，等反彈確認';
-    else if (bearAlign) entryNote = '空頭排列，等反彈均線壓力';
-    else entryNote = '等待明確空點';
-  } else {
-    entryNote = '三線不一致，暫不出手';
+  // ── 組裝回傳 ──
+  function buildResult() {
+    if (!entryNote) entryNote = tradeStatusText.replace(/^[✅⏳🚫]\s*/, '');
+    score = Math.max(0, Math.min(100, Math.round(score)));
+    return {
+      score: score, direction: direction, env: env,
+      entryNote: entryNote, reasons: reasons,
+      tradeStatus: tradeStatus, tradeStatusText: tradeStatusText,
+      bigTrend: bigTrend,
+      ma20: b20, ma60: g60, ma240: o240,
+      slopeBlue: slopeBlue, slopeGreen: slopeGreen, slopeOrange: slopeOrange,
+      bluePos: bluePos, greenPos: greenPos, orangePos: orangePos,
+      bullAlign: bullAlign, bearAlign: bearAlign,
+      goldCross: goldCross, deathCross: deathCross,
+      nearGreenSupport: nearGreenSupport, nearGreenResist: nearGreenResist,
+      nearOrangeSupport: nearOrangeSupport,
+      devFromOrange: devFromOrange, devFromGreen: devFromGreen, devFromBlue: devFromBlue,
+      rsi14: rsi14, last: last, volRising: volRising, volFalling: volFalling,
+      isOverExtended: isOverExtended, move3: move3,
+      patterns: patterns, vetoReasons: vetoReasons,
+      priorHigh: patternResult.priorHigh, priorLow: patternResult.priorLow,
+      targetPrice: (typeof targetPrice !== 'undefined' ? targetPrice : last),
+      koudi: (typeof koudi !== 'undefined' ? koudi.state : ''),
+      trendHealth: (typeof health !== 'undefined' ? health.note : ''),
+    };
   }
-
-  // ── 形態識別整合 ──
-  var patternResult = detectPatterns(candles);
-  score = Math.max(0, Math.min(100, score + patternResult.scoreAdj));
-  // 形態方向覆寫：強形態可修正方向
-  var strongPattern = patternResult.patterns.find(p => p.confidence === 'high');
-  if (strongPattern && strongPattern.dir !== 'WATCH') {
-    direction = strongPattern.dir;
-  }
-  patternResult.patterns.forEach(p => {
-    reasons.push({ txt: p.name, type: p.dir === 'LONG' ? 'pos' : p.dir === 'SHORT' ? 'neg' : 'warn' });
-  });
-
-  // ── 明確操作判讀：立即可做 / 等待回測 / 觀望 ──
-  var tradeStatus = 'wait';     // ready | wait | avoid
-  var tradeStatusText = '';
-  var hasReadyPattern = patternResult.patterns.some(p =>
-    (p.confidence === 'high' || p.confidence === 'medium') && p.dir === direction);
-  if (direction === 'LONG') {
-    if (nearGreenSupport || nearOrangeSupport || hasReadyPattern) {
-      tradeStatus = 'ready'; tradeStatusText = '✅ 立即可做多';
-    } else if (bullAlign || goldCross) {
-      tradeStatus = 'wait'; tradeStatusText = '⏳ 等回測小綠/小藍進場';
-    } else {
-      tradeStatus = 'wait'; tradeStatusText = '⏳ 等明確支撐';
-    }
-  } else if (direction === 'SHORT') {
-    if (nearGreenResist || hasReadyPattern) {
-      tradeStatus = 'ready'; tradeStatusText = '✅ 立即可做空';
-    } else if (bearAlign || deathCross) {
-      tradeStatus = 'wait'; tradeStatusText = '⏳ 等反彈均線壓力放空';
-    } else {
-      tradeStatus = 'wait'; tradeStatusText = '⏳ 等反彈到壓力';
-    }
-  } else {
-    tradeStatus = 'avoid'; tradeStatusText = '🚫 觀望，方向不明';
-  }
-  // 急漲急跌/乖離過大 → 強制改觀望
-  if (patternResult.patterns.some(p => p.name === '90度急漲' || p.name === '正乖離過大')) {
-    if (direction === 'LONG') { tradeStatus = 'avoid'; tradeStatusText = '🚫 急漲過熱，勿追多'; }
-  }
-  if (isOverExtended) { tradeStatus = 'avoid'; tradeStatusText = '🚫 乖離過大，勿追'; }
-
-  return {
-    score, direction, env, entryNote, reasons,
-    tradeStatus, tradeStatusText,
-    ma20: b20, ma60: g60, ma240: o240,
-    slopeBlue, slopeGreen, slopeOrange,
-    bluePos, greenPos, orangePos,
-    bullAlign, bearAlign, goldCross, deathCross,
-    nearGreenSupport, nearGreenResist, nearOrangeSupport,
-    devFromOrange, devFromGreen, rsi14,
-    last, volRising, volFalling, isOverExtended,
-    patterns: patternResult.patterns,
-    priorHigh: patternResult.priorHigh,
-    priorLow: patternResult.priorLow,
-  };
 }
 
 // ══════════════════════════════════════════════════════
@@ -2800,6 +2862,8 @@ function formatTGMessage(t, type = 'sandao') {
 ${flowStr ? '🌊 ' + flowStr : ''}
 ${frStr ? '💸 ' + frStr : ''}
 
+🎯 目標價(1:1): $${fmtP2(t.targetPrice)} ${t.targetPrice ? '('+(t.direction==='LONG'?'+':'')+((t.targetPrice-t.last)/t.last*100).toFixed(1)+'%)' : ''}
+📐 扣抵: ${t.koudi || '--'} | 趨勢: ${t.trendHealth || '--'}
 🎯 EV評分: ${t.evScore} | R:R ${t.rr?.toFixed(1)}x | Kelly ${t.halfKelly?.toFixed(1)}%
 
 🔺 形態: ${(t.patterns && t.patterns.length) ? t.patterns.map(function(p){return p.name+'('+(p.dir==='LONG'?'多':p.dir==='SHORT'?'空':'觀察')+')';}).join('、') : '無明確形態'}
@@ -3011,7 +3075,11 @@ function sendAllHighScore() {
   if (savedChat)  { TG_CHAT_ID   = savedChat;  }
   TG_ENABLED = !!(TG_BOT_TOKEN && TG_CHAT_ID);
   // UI 初始化延遲（DOM 可能還未掛載）
-  setTimeout(updateTGStatus, 500);
+  setTimeout(function(){
+    updateTGStatus();
+    var b = document.getElementById('autoScanBtn');
+    if(b){ b.textContent = autoScanOn ? '🟢 自動掃描:開' : '⚪ 自動掃描:關'; b.className = 'tbtn2' + (autoScanOn ? ' on' : ''); }
+  }, 500);
 })();
 
 // 讓 AI 異動警報也能 hook Telegram
@@ -3293,6 +3361,8 @@ function detectPatterns(candles) {
     priorHigh, priorLow,
     swingHigh: priorHighObj,
     swingLow: priorLowObj,
+    swingHighs: recentHighs,
+    swingLows: recentLows,
     macdLast: macd.dif[n-1],
   };
 }
@@ -3336,10 +3406,30 @@ setInterval(refreshOrderFlow,45000);
 setInterval(detectAnomalies,60000);
 setInterval(fetchSentiment,300000);
 setInterval(()=>{ if(document.querySelector('.ni.on')?.dataset.v==='whale') loadWhale2(); },30000);
-// 三刀流每4小時自動重掃（K線數據變化較慢）
-setInterval(()=>{
-  if(sandaoData.length > 0) runSandaoScan();
-}, 4*3600000);
+// ── 三刀流每 1 小時自動掃描 + 自動推 Telegram ──
+// 註：需保持此分頁開啟才會持續執行
+var autoScanOn = (localStorage.getItem('auto_scan') !== 'off');
+function toggleAutoScan(){
+  autoScanOn = !autoScanOn;
+  localStorage.setItem('auto_scan', autoScanOn ? 'on' : 'off');
+  var btn = document.getElementById('autoScanBtn');
+  if(btn){
+    btn.textContent = autoScanOn ? '🟢 自動掃描:開' : '⚪ 自動掃描:關';
+    btn.className = 'tbtn2' + (autoScanOn ? ' on' : '');
+  }
+  toast2(autoScanOn ? '✅ 已開啟每小時自動掃描' : '⏸ 已關閉自動掃描');
+}
+async function hourlyAutoScan(){
+  if(!autoScanOn) return;
+  toast2('🕐 每小時自動掃描啟動…');
+  await loadAll();              // 先更新全線行情
+  await refreshOrderFlow();     // 更新大單流向
+  await runSandaoScan();        // 跑三刀流（內含 autoSendTelegram 自動推送）
+}
+// 每小時整點觸發
+setInterval(hourlyAutoScan, 3600000);
+// 啟動後 30 秒先跑第一次（讓初始資料先載入）
+setTimeout(()=>{ if(autoScanOn && document.querySelector('.ni.on')?.dataset.v !== 'sandao'){ hourlyAutoScan(); } }, 30000);
 </script>
 </body>
 </html>
