@@ -492,6 +492,73 @@ td{padding:8px 12px;font-size:12.5px;vertical-align:middle;}
   <div id="riskGrid2" class="rg"><div class="loading"><div class="spin2"></div>分析中…</div></div>
 </div>
 
+<!-- ▸ AI 異動監控 -->
+<div class="view" id="view-aimonitor">
+  <div class="sh">
+    <div><div class="st">🔔 AI 異動監控</div><div class="ss">異動偵測 · 持倉追蹤 · AI大盤分析 · 多空情緒 · 每60秒掃描</div></div>
+    <div class="sr">
+      <button class="hbtn" onclick="detectAnomalies();toast2('🔍 手動掃描完成')">手動掃描</button>
+      <span class="chip chip-c">AUTO 60s</span>
+    </div>
+  </div>
+  <div class="sr2" id="monitorStats"></div>
+  <div class="tabs">
+    <div class="tab on" onclick="monitorTab(this,'timeline')">⚡ 異動時間軸</div>
+    <div class="tab" onclick="monitorTab(this,'analysis')">🤖 AI大盤分析</div>
+    <div class="tab" onclick="monitorTab(this,'sentiment')">🌡 多空情緒</div>
+  </div>
+  <div class="tb" style="background:var(--bg1);border:1px solid var(--border);border-radius:10px;margin-bottom:12px;">
+    <input class="ti" id="monitorSearch" placeholder="搜尋幣種…" oninput="renderTimelineTab()" style="width:140px">
+    <span class="tinfo" style="color:var(--text2);margin-left:4px">🔴 高優先 · 🟡 中優先 · 🟢 追蹤中</span>
+    <div class="tsp"></div>
+    <button class="tbtn2" onclick="alertTimeline.length=0;renderAIMonitor();toast2('已清除')">清除記錄</button>
+  </div>
+  <div id="monitorTimeline"><div class="empty2">系統啟動後自動開始掃描，異動記錄將顯示於此</div></div>
+</div>
+
+<!-- ▸ 三刀流選幣 -->
+<div class="view" id="view-sandao">
+  <div class="sh">
+    <div><div class="st">🗡 均線三刀流選幣</div>
+    <div class="ss">60分K · 多空分開 · 立即可做/等待/觀望 明確判讀 · 形態識別</div></div>
+    <div class="sr">
+      <button class="hbtn" id="sdScanBtn" onclick="runSandaoScan()">🔍 掃描</button>
+      <span class="chip chip-c" id="sdStatus">尚未掃描</span>
+    </div>
+  </div>
+  <div class="tg-setup">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div style="font-size:12px;font-weight:700;color:var(--text2)">📱 Telegram 通知設定</div>
+      <span class="tg-status" id="tgStatusBadge">未設定</span>
+    </div>
+    <div class="tg-row">
+      <span class="tg-label">Bot Token</span>
+      <input class="tg-input" id="tgTokenInput" placeholder="123456789:AAxxxx..." type="password">
+      <button class="tg-save" onclick="TG_BOT_TOKEN=document.getElementById('tgTokenInput').value;localStorage.setItem('tg_bot_token',TG_BOT_TOKEN);updateTGStatus();toast2('✅ Token 已儲存')">儲存</button>
+    </div>
+    <div class="tg-row">
+      <span class="tg-label">Chat ID</span>
+      <input class="tg-input" id="tgChatInput" placeholder="-1001234567890 或 @頻道名" type="text">
+      <button class="tg-save" onclick="TG_CHAT_ID=document.getElementById('tgChatInput').value;localStorage.setItem('tg_chat_id',TG_CHAT_ID);updateTGStatus();toast2('✅ Chat ID 已儲存')">儲存</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <button class="tbtn2" onclick="testTelegram()">📨 測試發送</button>
+      <button class="tbtn2" onclick="sendAllHighScore()">📢 發送全部高分標的</button>
+      <span style="font-size:10.5px;color:var(--text3)">立即可做 + 分數≥65 者自動通知</span>
+    </div>
+  </div>
+  <div class="sr2" id="sdStats"></div>
+  <div class="tabs">
+    <div class="tab on" onclick="sdTab(this,'ready_long')">✅ 立即做多</div>
+    <div class="tab" onclick="sdTab(this,'ready_short')">✅ 立即做空</div>
+    <div class="tab" onclick="sdTab(this,'wait')">⏳ 等待中</div>
+    <div class="tab" onclick="sdTab(this,'all')">全部</div>
+    <div class="tab" onclick="sdTab(this,'pattern')">🔺 有形態</div>
+    <div class="tab" onclick="sdTab(this,'avoid')">🚫 觀望</div>
+  </div>
+  <div class="tw"><div id="sdBody"><div class="empty2">進入頁面自動掃描中（約30秒）…</div></div></div>
+</div>
+
 <!-- ▸ 策略 -->
 <div class="view" id="view-strategy">
   <div class="sh"><div><div class="st">⚙️ 自訂策略篩選</div><div class="ss">EV導向 · 多維條件 · 含Kelly過濾</div></div></div>
