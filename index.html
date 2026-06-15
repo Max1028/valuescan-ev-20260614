@@ -418,6 +418,12 @@ td{padding:8px 12px;font-size:12.5px;vertical-align:middle;}
 .sbar-fill{height:100%;border-radius:3px;transition:width .4s;}
 .sbar-val{font-family:'JetBrains Mono',monospace;font-size:11px;min-width:50px;text-align:right;}
 
+
+/* ── 形態 PATTERN BADGES ── */
+.pat-badge{display:inline-block;padding:2px 6px;border-radius:4px;font-size:9.5px;font-weight:700;margin:1px;cursor:help;}
+.pat-long{background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.28);}
+.pat-short{background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.28);}
+.pat-watch{background:rgba(245,158,11,.1);color:var(--yellow);border:1px solid rgba(245,158,11,.24);}
 /* ── 均線三刀流 STYLES ── */
 .sd-env-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;}
 .sd-bull{background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.25);}
@@ -686,6 +692,7 @@ td{padding:8px 12px;font-size:12.5px;vertical-align:middle;}
     <div class="tab" onclick="sdTab(this,'cross')">金叉/死叉</div>
     <div class="tab" onclick="sdTab(this,'green')">小綠機會</div>
     <div class="tab" onclick="sdTab(this,'orange')">小橘休息站</div>
+    <div class="tab" onclick="sdTab(this,'pattern')">🔺 有形態</div>
   </div>
   <div class="tw"><div id="sdBody"><div class="empty2">點擊「掃描」開始分析（需約60秒抓取K線數據）</div></div></div>
 </div>
@@ -6388,6 +6395,18 @@ function sandaoScore(candles, flowScore, flowEVBoost) {
     entryNote = '三線不一致，暫不出手';
   }
 
+  // ── 形態識別整合 ──
+  var patternResult = detectPatterns(candles);
+  score = Math.max(0, Math.min(100, score + patternResult.scoreAdj));
+  // 形態方向覆寫：強形態可修正方向
+  var strongPattern = patternResult.patterns.find(p => p.confidence === 'high');
+  if (strongPattern && strongPattern.dir !== 'WATCH') {
+    direction = strongPattern.dir;
+  }
+  patternResult.patterns.forEach(p => {
+    reasons.push({ txt: p.name, type: p.dir === 'LONG' ? 'pos' : p.dir === 'SHORT' ? 'neg' : 'warn' });
+  });
+
   return {
     score, direction, env, entryNote, reasons,
     ma20: b20, ma60: g60, ma240: o240,
@@ -6397,6 +6416,9 @@ function sandaoScore(candles, flowScore, flowEVBoost) {
     nearGreenSupport, nearGreenResist, nearOrangeSupport,
     devFromOrange, devFromGreen, rsi14,
     last, volRising, volFalling, isOverExtended,
+    patterns: patternResult.patterns,
+    priorHigh: patternResult.priorHigh,
+    priorLow: patternResult.priorLow,
   };
 }
 
@@ -6506,6 +6528,9 @@ ${frStr ? '💸 ' + frStr : ''}
 
 🎯 EV評分: ${t.evScore} | R:R ${t.rr?.toFixed(1)}x | Kelly ${t.halfKelly?.toFixed(1)}%
 
+🔺 形態: ${(t.patterns && t.patterns.length) ? t.patterns.map(function(p){return p.name+'('+(p.dir==='LONG'?'多':p.dir==='SHORT'?'空':'觀察')+')';}).join('、') : '無明確形態'}
+${(t.patterns && t.patterns.length) ? t.patterns.map(function(p){return '   • '+p.detail;}).join("\n") : ''}
+
 📝 信號理由: ${t.reasons.slice(0, 3).map(r => r.txt).join(' · ')}
 
 ⚠️ 僅供參考，注意風險管理
@@ -6593,6 +6618,7 @@ function renderSandao() {
     if (filter === 'cross')   return t.goldCross || t.deathCross;
     if (filter === 'green')   return t.nearGreenSupport || t.nearGreenResist;
     if (filter === 'orange')  return t.nearOrangeSupport;
+    if (filter === 'pattern') return t.patterns && t.patterns.length > 0;
     return true;
   });
 
@@ -6623,7 +6649,7 @@ function renderSandao() {
   document.getElementById('sdBody').innerHTML = `<table>
     <thead><tr>
       <th>#</th><th>幣種</th><th>方向</th><th>三刀流分</th>
-      <th>市場環境</th><th>小藍斜率</th><th>小綠斜率</th><th>小橘斜率</th>
+      <th>形態</th><th>市場環境</th><th>小藍斜率</th><th>小綠斜率</th><th>小橘斜率</th>
       <th>價格位置</th><th>進場建議</th><th>大單流向</th>
       <th>EV分</th><th>現價</th><th>24h漲跌</th><th>通知</th>
     </tr></thead>
@@ -6647,6 +6673,7 @@ function renderSandao() {
         <td><div class="cc2"><div class="ci2">${t.sym.slice(0, 2)}</div><div><div class="cn2">${t.sym}</div></div></div></td>
         <td>${dir}</td>
         <td><div class="sb-wrap"><div class="sb-bg"><div class="sb-fill" style="width:${t.score}%;background:${scC(t.score)}"></div></div><span class="sb-num" style="color:${scC(t.score)};font-weight:700">${t.score}</span></div></td>
+        <td style="max-width:160px">${(t.patterns && t.patterns.length) ? t.patterns.map(function(p){var c=p.dir==='LONG'?'pat-long':p.dir==='SHORT'?'pat-short':'pat-watch';return '<span class="pat-badge '+c+'" title="'+p.detail+'">'+p.name+'</span>';}).join('') : '<span style="color:var(--text3);font-size:10px">無形態</span>'}</td>
         <td style="font-size:11px;color:var(--text2)">${t.env}</td>
         <td class="mono" style="color:${t.bluePos ? 'var(--green)' : t.slopeBlue < -0.05 ? 'var(--red)' : 'var(--text2)'}">${slopeIcon(t.slopeBlue)} ${t.slopeBlue.toFixed(2)}%</td>
         <td class="mono" style="color:${t.greenPos ? 'var(--green)' : t.slopeGreen < -0.03 ? 'var(--red)' : 'var(--text2)'}">${slopeIcon(t.slopeGreen)} ${t.slopeGreen.toFixed(2)}%</td>
@@ -6728,6 +6755,271 @@ detectAnomalies = function() {
   });
 };
 // ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+//  形態識別引擎 (Pattern Recognition)
+//  基於三刀流教材：擺動高低點 + 次高/末跌高/頭肩底/
+//  三顧茅廬/90度急漲急跌/背離
+// ══════════════════════════════════════════════════════
+
+// ── 找擺動高低點 (Swing High/Low) ──
+// 一根K的左右各 lookback 根都比它低(高)，才算擺動高(低)點
+function findSwingPoints(candles, lookback = 5) {
+  var highs = [], lows = [];
+  var n = candles.length;
+  for (var i = lookback; i < n - lookback; i++) {
+    var isHigh = true, isLow = true;
+    for (var j = i - lookback; j <= i + lookback; j++) {
+      if (j === i) continue;
+      if (candles[j].high >= candles[i].high) isHigh = false;
+      if (candles[j].low  <= candles[i].low)  isLow  = false;
+    }
+    if (isHigh) highs.push({ idx: i, price: candles[i].high, ts: candles[i].ts });
+    if (isLow)  lows.push({ idx: i, price: candles[i].low,  ts: candles[i].ts });
+  }
+  return { highs, lows };
+}
+
+// ── MACD 計算（用於背離） ──
+function calcMACD(closes, fast = 12, slow = 26, signal = 9) {
+  function ema(arr, period) {
+    var k = 2 / (period + 1);
+    var out = [arr[0]];
+    for (var i = 1; i < arr.length; i++) out.push(arr[i] * k + out[i-1] * (1 - k));
+    return out;
+  }
+  var emaFast = ema(closes, fast);
+  var emaSlow = ema(closes, slow);
+  var dif = closes.map((_, i) => emaFast[i] - emaSlow[i]);
+  var dea = ema(dif, signal);
+  var hist = dif.map((d, i) => d - dea[i]);
+  return { dif, dea, hist };
+}
+
+// ── 主形態偵測函式 ──
+function detectPatterns(candles) {
+  if (!candles || candles.length < 60) return { patterns: [], score: 0, swingHigh: null, swingLow: null };
+
+  var closes = candles.map(c => c.close);
+  var highs_arr = candles.map(c => c.high);
+  var lows_arr = candles.map(c => c.low);
+  var vols = candles.map(c => c.vol);
+  var n = candles.length;
+  var last = closes[n-1];
+
+  var swings = findSwingPoints(candles, 5);
+  var macd = calcMACD(closes);
+
+  var patterns = [];
+  var scoreAdj = 0;
+
+  // ── 真正的前高/前低（眼界放寬：取近120根內的擺動極值） ──
+  var recentWindow = 120;
+  var recentHighs = swings.highs.filter(h => h.idx > n - recentWindow);
+  var recentLows  = swings.lows.filter(l => l.idx > n - recentWindow);
+  var priorHigh = recentHighs.length ? Math.max(...recentHighs.map(h => h.price)) : Math.max(...highs_arr.slice(-recentWindow));
+  var priorLow  = recentLows.length  ? Math.min(...recentLows.map(l => l.price))  : Math.min(...lows_arr.slice(-recentWindow));
+  var priorHighObj = recentHighs.find(h => h.price === priorHigh);
+  var priorLowObj  = recentLows.find(l => l.price === priorLow);
+
+  // ══════════════════════════════════════════════
+  //  1. 次高放空形態 (反彈未過前高)
+  // ══════════════════════════════════════════════
+  // 結構：前高 → 下殺低點 → 反彈高(次高) < 前高
+  if (recentHighs.length >= 2 && priorHighObj) {
+    // 找前高之後的反彈高點
+    var afterPriorHigh = recentHighs.filter(h => h.idx > priorHighObj.idx);
+    if (afterPriorHigh.length >= 1) {
+      var secondHigh = afterPriorHigh[afterPriorHigh.length - 1];
+      // 中間要有明顯下殺
+      var betweenLows = recentLows.filter(l => l.idx > priorHighObj.idx && l.idx < secondHigh.idx);
+      var hasDrop = betweenLows.length > 0 &&
+        Math.min(...betweenLows.map(l => l.price)) < priorHigh * 0.97;
+      // 次高低於前高
+      var lowerHigh = secondHigh.price < priorHigh * 0.998;
+      // 次高近期(最後30根內)
+      var isRecent = secondHigh.idx > n - 30;
+
+      if (hasDrop && lowerHigh && isRecent) {
+        // MACD 背離確認：次高的MACD是否低於前高的MACD
+        var macdAtPrior = macd.dif[priorHighObj.idx];
+        var macdAtSecond = macd.dif[secondHigh.idx];
+        var bearishDiv = macdAtSecond < macdAtPrior;
+
+        patterns.push({
+          name: '次高放空',
+          dir: 'SHORT',
+          detail: `前高 $${fmtP2(priorHigh)} → 次高 $${fmtP2(secondHigh.price)} 未過前高${bearishDiv ? ' + MACD背離' : ''}`,
+          confidence: bearishDiv ? 'high' : 'medium',
+          defend: priorHigh, // 放空防守前高
+        });
+        scoreAdj -= bearishDiv ? 22 : 14;
+      }
+    }
+  }
+
+  // ══════════════════════════════════════════════
+  //  2. 末跌高做多形態 (突破下跌最後高點)
+  // ══════════════════════════════════════════════
+  // 下跌趨勢中最後一個反彈高，價格突破後回測不破
+  if (recentHighs.length >= 2 && recentLows.length >= 1) {
+    // 下跌段中的最後反彈高
+    var descHighs = recentHighs.filter(h => h.idx > n - 60);
+    if (descHighs.length >= 2) {
+      var lastDescHigh = descHighs[descHighs.length - 2]; // 倒數第二個高(末跌高)
+      var brokeAbove = last > lastDescHigh.price * 1.002;
+      var pullbackHold = last > lastDescHigh.price * 0.99 && last < lastDescHigh.price * 1.03;
+      if (brokeAbove && pullbackHold) {
+        patterns.push({
+          name: '末跌高突破',
+          dir: 'LONG',
+          detail: `突破末跌高 $${fmtP2(lastDescHigh.price)}，回測不破`,
+          confidence: 'medium',
+          defend: lastDescHigh.price * 0.98,
+        });
+        scoreAdj += 16;
+      }
+    }
+  }
+
+  // ══════════════════════════════════════════════
+  //  3. 頭肩底做多 (左肩-頭-右肩，右肩高於頭)
+  // ══════════════════════════════════════════════
+  if (recentLows.length >= 3) {
+    var last3Lows = recentLows.slice(-3);
+    var leftShoulder = last3Lows[0], head = last3Lows[1], rightShoulder = last3Lows[2];
+    // 頭部最低，右肩不低於左肩
+    var isHeadShoulder = head.price < leftShoulder.price &&
+      head.price < rightShoulder.price &&
+      rightShoulder.price >= leftShoulder.price * 0.99 &&
+      rightShoulder.idx > n - 30;
+    if (isHeadShoulder) {
+      patterns.push({
+        name: '頭肩底',
+        dir: 'LONG',
+        detail: `左肩$${fmtP2(leftShoulder.price)} 頭$${fmtP2(head.price)} 右肩$${fmtP2(rightShoulder.price)}`,
+        confidence: 'high',
+        defend: head.price, // 防守頭部最低
+      });
+      scoreAdj += 18;
+    }
+  }
+
+  // ══════════════════════════════════════════════
+  //  4. 三顧茅廬 (反覆挑戰均線/前高，力道遞減後突破)
+  // ══════════════════════════════════════════════
+  if (recentHighs.length >= 3) {
+    var last3H = recentHighs.slice(-3);
+    // 三個高點接近（在2%區間內反覆挑戰同一壓力）
+    var avgH = last3H.reduce((a, h) => a + h.price, 0) / 3;
+    var allNear = last3H.every(h => Math.abs(h.price - avgH) / avgH < 0.02);
+    var breakingOut = last > avgH * 1.005; // 第三次後突破
+    if (allNear && breakingOut && last3H[2].idx > n - 25) {
+      patterns.push({
+        name: '三顧茅廬突破',
+        dir: 'LONG',
+        detail: `反覆挑戰 $${fmtP2(avgH)} 三次後突破`,
+        confidence: 'medium',
+        defend: avgH * 0.985,
+      });
+      scoreAdj += 14;
+    }
+  }
+
+  // ══════════════════════════════════════════════
+  //  5. 90度急漲 / 急跌
+  // ══════════════════════════════════════════════
+  // 最近3根的累積漲跌幅
+  var c3ago = closes[n-4] || closes[0];
+  var move3 = (last - c3ago) / c3ago * 100;
+  var recentVolAvg = vols.slice(-3).reduce((a,b)=>a+b,0)/3;
+  var priorVolAvg = vols.slice(-20,-3).reduce((a,b)=>a+b,0)/17;
+  var volSurge = recentVolAvg > priorVolAvg * 1.8;
+
+  if (move3 > 8) {
+    // 急漲 — 教材：不追高，等次高放空
+    patterns.push({
+      name: '90度急漲',
+      dir: 'WATCH',
+      detail: `3根急漲 +${move3.toFixed(1)}%${volSurge ? '(爆量,反轉較難)' : '(量小,易反轉)'}，不追高`,
+      confidence: volSurge ? 'low' : 'medium',
+      defend: null,
+    });
+    // 急漲後追多風險高 → 扣分
+    scoreAdj -= volSurge ? 5 : 12;
+  } else if (move3 < -8) {
+    // 急跌 — 教材：角度越陡越可能反彈
+    patterns.push({
+      name: '90度急跌',
+      dir: volSurge ? 'WATCH' : 'LONG',
+      detail: `3根急跌 ${move3.toFixed(1)}%${volSurge ? '(爆量,反轉難)' : '(量小,易反彈)'}`,
+      confidence: volSurge ? 'low' : 'medium',
+      defend: null,
+    });
+    if (!volSurge) scoreAdj += 8; // 量小急跌容易反彈
+  }
+
+  // ══════════════════════════════════════════════
+  //  6. 背離 (價格 vs MACD)
+  // ══════════════════════════════════════════════
+  // 正背離：價格創新低，MACD不創新低 (下跌動能衰退)
+  if (recentLows.length >= 2) {
+    var l2 = recentLows.slice(-2);
+    var priceLowerLow = l2[1].price < l2[0].price;
+    var macdHigherLow = macd.dif[l2[1].idx] > macd.dif[l2[0].idx];
+    if (priceLowerLow && macdHigherLow && l2[1].idx > n - 20) {
+      patterns.push({
+        name: '正背離',
+        dir: 'LONG',
+        detail: '價格創新低但MACD未創低，下跌動能衰退',
+        confidence: 'medium',
+        defend: l2[1].price,
+      });
+      scoreAdj += 12;
+    }
+  }
+  // 負背離：價格創新高，MACD不創新高 (上漲動能衰退)
+  if (recentHighs.length >= 2) {
+    var h2 = recentHighs.slice(-2);
+    var priceHigherHigh = h2[1].price > h2[0].price;
+    var macdLowerHigh = macd.dif[h2[1].idx] < macd.dif[h2[0].idx];
+    if (priceHigherHigh && macdLowerHigh && h2[1].idx > n - 20) {
+      patterns.push({
+        name: '負背離',
+        dir: 'SHORT',
+        detail: '價格創新高但MACD未創高，上漲動能衰退',
+        confidence: 'medium',
+        defend: h2[1].price,
+      });
+      scoreAdj -= 12;
+    }
+  }
+
+  // ══════════════════════════════════════════════
+  //  7. 乖離過大 (離家太遠)
+  // ══════════════════════════════════════════════
+  // 已在 sandaoScore 處理小橘乖離，這裡補極端值
+  var ma20short = closes.slice(-20).reduce((a,b)=>a+b,0)/20;
+  var devShort = (last - ma20short) / ma20short * 100;
+  if (Math.abs(devShort) > 12) {
+    patterns.push({
+      name: devShort > 0 ? '正乖離過大' : '負乖離過大',
+      dir: 'WATCH',
+      detail: `離20MA ${devShort.toFixed(1)}%，${devShort > 0 ? '不追多' : '不追空'}`,
+      confidence: 'low',
+      defend: null,
+    });
+    scoreAdj -= 6;
+  }
+
+  return {
+    patterns,
+    scoreAdj,
+    priorHigh, priorLow,
+    swingHigh: priorHighObj,
+    swingLow: priorLowObj,
+    macdLast: macd.dif[n-1],
+  };
+}
 //  NAV + INIT
 // ══════════════════════════════════════════════════════
 function gv(el){
