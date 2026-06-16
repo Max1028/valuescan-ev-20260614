@@ -708,12 +708,12 @@ function evEngine(t){
     entry=t.last;
     stop=Math.max(t.low24h, t.last-atr*1.2);
     target=t.last+atr*3;
-    rr=target>entry&&stop<entry?(target-entry)/(entry-stop):0;
+    rr=target>entry&&stop<entry?Math.min(8,(target-entry)/(entry-stop)):0;
   } else if(direction==='SHORT'){
     entry=t.last;
     stop=Math.min(t.high24h, t.last+atr*1.2);
     target=t.last-atr*3;
-    rr=target<entry&&stop>entry?(entry-target)/(stop-entry):0;
+    rr=target<entry&&stop>entry?Math.min(8,(entry-target)/(stop-entry)):0;
   } else {
     entry=t.last;stop=t.last*(direction==='LONG'?0.97:1.03);
     target=t.last*(direction==='LONG'?1.05:0.95);rr=1.5;
@@ -1815,7 +1815,7 @@ function detectAnomalies() {
     // ── 條件5：價格突破24h高點/低點
     var range = t.high24h - t.low24h;
     var pos = range > 0 ? (t.last - t.low24h) / range : 0.5;
-    var isBreakoutHigh = pos > 0.92 && t.changePct > 4;
+    var isBreakoutHigh = pos > 0.94 && t.changePct > 6;
     var isBreakoutLow  = pos < 0.08 && t.changePct < -4;
 
     // ── 已追蹤中的持倉 → 檢查止盈/退出 ──
@@ -1916,21 +1916,42 @@ function detectAnomalies() {
       });
     }
 
-    // 突破高點
+    // 突破高點（趨勢延續語意 = 看多）
     else if (isBreakoutHigh) {
-      tags.push(ALERT_TAGS.trend, ALERT_TAGS.bullish);
+      // 用三刀流方向校正：若三刀流看空，這是「衝高但結構偏空」的警示而非追多
+      var sdBrk = sandaoData.find(d => d.sym === t.sym);
+      var brkBull = !sdBrk || sdBrk.direction !== 'SHORT';
+      tags.push(ALERT_TAGS.trend, brkBull ? ALERT_TAGS.bullish : ALERT_TAGS.bearish);
       alerts.push({
         type: 'breakout_high',
-        title: `${t.sym} 突破24h高點，趨勢延續信號`,
-        body: `${t.sym} 現報 $${fmtP2(t.last)}，突破日內高點，成交量放大，趨勢可能延續。`,
+        title: brkBull
+          ? `${t.sym} 突破24h高點，趨勢延續(偏多)`
+          : `${t.sym} 衝高但三刀流偏空，慎防假突破`,
+        body: `${t.sym} 現報 $${fmtP2(t.last)}，突破日內高點${sdBrk ? '；三刀流判:' + (sdBrk.tradeStatusText||'') : ''}。`,
         tags, priority: 'low',
+        forceDir: brkBull ? 'LONG' : 'SHORT',
+      });
+    }
+    // 跌破低點（趨勢延續語意 = 看空）
+    else if (isBreakoutLow) {
+      var sdLow = sandaoData.find(d => d.sym === t.sym);
+      var lowBear = !sdLow || sdLow.direction !== 'LONG';
+      tags.push(ALERT_TAGS.trend, lowBear ? ALERT_TAGS.bearish : ALERT_TAGS.bullish);
+      alerts.push({
+        type: 'breakout_low',
+        title: lowBear
+          ? `${t.sym} 跌破24h低點，趨勢延續(偏空)`
+          : `${t.sym} 殺低但三刀流偏多，慎防假跌破`,
+        body: `${t.sym} 現報 $${fmtP2(t.last)}，跌破日內低點${sdLow ? '；三刀流判:' + (sdLow.tradeStatusText||'') : ''}。`,
+        tags, priority: 'low',
+        forceDir: lowBear ? 'SHORT' : 'LONG',
       });
     }
 
     // 觸發 → 加入時間軸 + 開始追蹤
     if (alerts.length > 0) {
       var a = alerts[0];
-      newAlerts.push(makeAlert(t, a.type, a.title, a.tags, a.type, t.last, a.priority, a.body));
+      newAlerts.push(makeAlert(t, a.type, a.title, a.tags, a.type, t.last, a.priority, a.body, a.forceDir));
       // 開始持倉追蹤
       trackedPositions[t.sym] = {
         sym: t.sym, direction: t.direction,
@@ -1953,7 +1974,19 @@ function detectAnomalies() {
   updateAIMonitorBadge();
 }
 
-function makeAlert(t, type, title, tags, label, price, priority = 'medium', body = '') {
+function makeAlert(t, type, title, tags, label, price, priority = 'medium', body = '', forceDir = null) {
+  var effDir = forceDir || t.direction;
+  // ── 與三刀流方向比對 ──
+  var sd = sandaoData.find(d => d.sym === t.sym);
+  var sandaoDir = sd ? sd.direction : null;
+  var sandaoStatus = sd ? sd.tradeStatus : null;
+  var sandaoScoreVal = sd ? sd.score : null;
+  // 異動方向 vs 三刀流方向 是否一致
+  var agree = 'unknown';
+  if (sandaoDir && effDir && effDir !== 'NEUTRAL' && effDir !== 'WATCH') {
+    if (sandaoDir === 'NEUTRAL') agree = 'unknown';
+    else agree = (sandaoDir === effDir) ? 'agree' : 'conflict';
+  }
   return {
     id: Date.now() + Math.random(),
     sym: t.sym, type, title, tags, label,
@@ -1961,7 +1994,9 @@ function makeAlert(t, type, title, tags, label, price, priority = 'medium', body
     body: body || `${t.sym} 現報 $${fmtP2(price)}，24h漲跌 ${t.changePct?.toFixed(2)}%。`,
     time: Date.now(),
     evScore: t.evScore, ev: t.ev, rr: t.rr,
-    direction: t.direction, confidence: t.confidence,
+    direction: effDir, confidence: t.confidence,
+    sandaoDir: sandaoDir, sandaoStatus: sandaoStatus, sandaoScore: sandaoScoreVal,
+    agree: agree,
   };
 }
 
@@ -2205,8 +2240,9 @@ function renderTimelineTab() {
           <div class="tl-tags">${a.tags.map(tg => `<span class="tl-tag ${tg.cls}">${tg.text}</span>`).join('')}</div>
           <div class="tl-meta">
             <span class="tl-meta-item">EV ${a.evScore}</span>
-            <span class="tl-meta-item">R:R ${a.rr?.toFixed(1)}x</span>
             <span class="tl-meta-item">${a.direction === 'LONG' ? '📈多' : a.direction === 'SHORT' ? '📉空' : '—'}</span>
+            ${a.sandaoDir ? '<span class="tl-meta-item">三刀流:' + (a.sandaoDir==='LONG'?'多':a.sandaoDir==='SHORT'?'空':'中性') + (a.sandaoScore!=null?'('+a.sandaoScore+')':'') + '</span>' : ''}
+            ${a.agree === 'agree' ? '<span class="tl-agree tl-ag-ok">✓方向一致</span>' : a.agree === 'conflict' ? '<span class="tl-agree tl-ag-bad">✗方向衝突</span>' : ''}
             <span class="tl-meta-item" style="color:var(--text3)">${relT(a.time)}</span>
           </div>
         </div>
