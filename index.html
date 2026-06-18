@@ -541,6 +541,11 @@ td{padding:8px 12px;font-size:12.5px;vertical-align:middle;}
       <input class="tg-input" id="tgChatInput" placeholder="-1001234567890 或 @頻道名" type="text">
       <button class="tg-save" onclick="TG_CHAT_ID=document.getElementById('tgChatInput').value;localStorage.setItem('tg_chat_id',TG_CHAT_ID);updateTGStatus();toast2('✅ Chat ID 已儲存')">儲存</button>
     </div>
+    <div class="tg-row">
+      <span class="tg-label">聚合Worker</span>
+      <input class="tg-input" id="aggProxyInput" placeholder="https://valuescan-agg.你的帳號.workers.dev（選填，真實大單金額）" type="text">
+      <button class="tg-save" onclick="AGG_PROXY=document.getElementById('aggProxyInput').value.replace(/\/$/,'');localStorage.setItem('agg_proxy',AGG_PROXY);toast2('✅ 聚合Worker已設定')">儲存</button>
+    </div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <button class="tbtn2" onclick="testTelegram()">📨 測試發送</button>
       <button class="tbtn2" onclick="sendAllHighScore()">📢 發送全部高分標的</button>
@@ -620,6 +625,34 @@ window.addEventListener('unhandledrejection', function(e){
 var swapT=[],spotT=[],allT=[];
 var scrSortKey='ev',scrSortDir=-1,lbTab2Current='ev',oppTabCurrent='all';
 var BASE='https://www.okx.com/api/v5';
+// ── 資料聚合 Worker（多交易所真實金額大單偵測）──
+// 部署 data_proxy_worker.js 後，把網址填到這裡（留空則停用真實金額功能）
+var AGG_PROXY = localStorage.getItem('agg_proxy') || '';  // 例: https://valuescan-agg.你的帳號.workers.dev
+var bigTradeCache = {};  // sym -> {netUsd, buyUsd, sellUsd, bigBuys, bigSells, flowScore, ts}
+
+// 格式化美元金額
+function fmtUsd(v){
+  if (v==null || !isFinite(v)) return '--';
+  var a = Math.abs(v);
+  if (a >= 1e9) return (v/1e9).toFixed(2)+'B';
+  if (a >= 1e6) return (v/1e6).toFixed(2)+'M';
+  if (a >= 1e3) return (v/1e3).toFixed(1)+'K';
+  return v.toFixed(0);
+}
+
+// 抓單一幣的真實大單金額（透過聚合 Worker）
+async function fetchBigTrades(sym, minUsd){
+  if (!AGG_PROXY) return null;
+  try {
+    var r = await fetch(`${AGG_PROXY}/agg?action=largetrades&sym=${sym}&min=${minUsd||50000}`);
+    var d = await r.json();
+    if (d && d.netUsd !== undefined){
+      bigTradeCache[sym] = { ...d, ts: Date.now() };
+      return d;
+    }
+  } catch(e){}
+  return null;
+}
 
 // ══════════════════════════════════════════════════════
 //  UTILS
@@ -630,12 +663,49 @@ var pct2=n=>{if(isNaN(n))return'--';return(n>=0?'+':'')+n.toFixed(2)+'%';};
 var pcol2=n=>n>=0?'g':'r';
 var toast2=msg=>{const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2800);};
 
-async function okx2(p){
-  var r=await fetch(BASE+p,{headers:{Accept:'application/json'}});
-  if(!r.ok)throw new Error('HTTP '+r.status);
-  var j=await r.json();
-  if(j.code!=='0')throw new Error(j.msg||'OKX API error');
-  return j.data;
+// ── 全域節流器：OKX 公開端點限流 每2秒20次=每秒10次，控制在每秒8次留安全邊際 ──
+var _rlQueue = [];
+var _rlTokens = 8;          // 每秒最多 8 次
+var _rlMax = 8;
+setInterval(function(){ _rlTokens = _rlMax; _drainRL(); }, 1000);
+function _drainRL(){
+  while(_rlQueue.length > 0 && _rlTokens > 0){
+    _rlTokens--;
+    var fn = _rlQueue.shift();
+    fn();
+  }
+}
+function _rlAcquire(){
+  return new Promise(function(resolve){
+    _rlQueue.push(resolve);
+    _drainRL();
+  });
+}
+async function okx2(p, _retry){
+  _retry = _retry || 0;
+  await _rlAcquire();   // 取得節流令牌
+  try {
+    var r = await fetch(BASE+p,{headers:{Accept:'application/json'}});
+    if(r.status === 429){
+      // 限流 → 指數退避重試（最多3次）
+      if(_retry < 3){
+        var wait = Math.pow(2, _retry) * 1000; // 1s, 2s, 4s
+        await new Promise(function(res){ setTimeout(res, wait); });
+        return okx2(p, _retry + 1);
+      }
+      throw new Error('限流(429)重試失敗');
+    }
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    var j = await r.json();
+    if(j.code!=='0') throw new Error(j.msg||'OKX API error');
+    return j.data;
+  } catch(e){
+    if(_retry < 2 && /429|limit|Too Many/i.test(e.message)){
+      await new Promise(function(res){ setTimeout(res, Math.pow(2,_retry)*1000); });
+      return okx2(p, _retry + 1);
+    }
+    throw e;
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -1778,7 +1848,7 @@ var ALERT_TAGS = {
 // ══════════════════════════════════════════════════════
 //  ANOMALY DETECTION — 偵測各種異動條件
 // ══════════════════════════════════════════════════════
-function detectAnomalies() {
+async function detectAnomalies() {
   if (!allT.length) return;
 
   var now = Date.now();
@@ -1787,6 +1857,16 @@ function detectAnomalies() {
   // 取前60個主要合約幣種
   var swapTop = swapT.filter(t => t.volCcy24h > 2e6)
     .sort((a, b) => b.volCcy24h - a.volCcy24h).slice(0, 120);
+
+  // ── 若已設定聚合 Worker，先為高 EV 候選抓真實大單金額 ──
+  if (AGG_PROXY) {
+    var candidates = swapTop.filter(t => t.evScore >= 70).slice(0, 12);
+    await Promise.allSettled(candidates.map(t => {
+      var cached = bigTradeCache[t.sym];
+      if (cached && Date.now()-cached.ts < 300000) return Promise.resolve();
+      return fetchBigTrades(t.sym, 50000);
+    }));
+  }
 
   swapTop.forEach(t => {
     var alerts = [];
@@ -1876,7 +1956,13 @@ function detectAnomalies() {
       alerts.push({
         type: isBull ? 'bull_alpha' : 'bear_alpha',
         title: `${t.sym} 合約資金異常活躍，可能是${isBull ? '利多' : '利空'}信號，請重點跟蹤`,
-        body: `${t.sym} 主力資金持續${isBull ? '流入' : '流出'}，24小時漲跌幅${t.changePct.toFixed(2)}%，現報 $${fmtP2(t.last)}，可能出現${isBull ? '上漲' : '下跌'}行情，但需注意風險。`,
+        body: (function(){
+          var bt = bigTradeCache[t.sym];
+          if (bt && Date.now()-bt.ts < 600000){
+            return `${t.sym} 大單淨${bt.netUsd>=0?'流入':'流出'} $${fmtUsd(Math.abs(bt.netUsd))}（買$${fmtUsd(bt.buyUsd)}/賣$${fmtUsd(bt.sellUsd)}，≥$${fmtUsd(bt.minUsd)}大單${bt.bigBuys+bt.bigSells}筆），現報 $${fmtP2(t.last)}，24h ${t.changePct.toFixed(2)}%。`;
+          }
+          return `${t.sym} 技術面${isBull?'偏多':'偏空'}（EV評分${t.evScore}），24h漲跌 ${t.changePct.toFixed(2)}%，現報 $${fmtP2(t.last)}。${AGG_PROXY?'':'（未設定聚合Worker，無實際資金數據）'}`;
+        })(),
         tags, priority: 'high',
       });
     }
@@ -1887,7 +1973,13 @@ function detectAnomalies() {
       alerts.push({
         type: 'trend_anomaly',
         title: `${t.sym} 合約資金出現趨勢行情異動，請重點關注`,
-        body: `${t.sym} 主力資金異常流入，現報 $${fmtP2(t.last)}，24小時漲跌幅${t.changePct.toFixed(2)}%，請注意市場行情變化。`,
+        body: (function(){
+          var bt = bigTradeCache[t.sym];
+          if (bt && Date.now()-bt.ts < 600000){
+            return `${t.sym} 偵測到 ≥$${fmtUsd(bt.minUsd)} 大單 ${bt.bigBuys+bt.bigSells} 筆，淨${bt.netUsd>=0?'流入':'流出'} $${fmtUsd(Math.abs(bt.netUsd))}，現報 $${fmtP2(t.last)}，24h ${t.changePct.toFixed(2)}%。`;
+          }
+          return `${t.sym} 成交量放大 + 技術異動，現報 $${fmtP2(t.last)}，24h ${t.changePct.toFixed(2)}%。${AGG_PROXY?'':'（未設定聚合Worker，無實際金額）'}`;
+        })(),
         tags, priority: 'medium',
       });
     }
@@ -2373,6 +2465,13 @@ async function fetchCandles(instId, bar='1H', limit=300) {
     }
     // 由舊到新排序
     all.sort((a, b) => a.ts - b.ts);
+    // 收定確認（校正版1.4/19.4）：最後一根可能未收完，移除它，只用已收定的K判斷
+    if (all.length > 1) {
+      var lastTs = all[all.length-1].ts;
+      var barMs = all.length>=2 ? (all[all.length-1].ts - all[all.length-2].ts) : 3600000;
+      // 若最後一根的開始時間 + 一根時長 > 現在，代表還沒收完，移除
+      if (lastTs + barMs > Date.now()) all.pop();
+    }
     return all;
   } catch(e) {
     // 完全失敗時退回一般 endpoint
@@ -2514,6 +2613,156 @@ function checkBottomFishing(last, b20, o240, bearAlign) {
   return { allowed: true, note: '已站回小橘' };
 }
 
+
+// ══════════════════════════════════════════════════════
+//  校正版完整落地：波段六法 + 防守停利 + 轉折偵測
+// ══════════════════════════════════════════════════════
+
+// ── L-1 三底成立（校正版7 L-1）──
+// 連續3-4次下影線/底底高，前低不破，突破頸線
+function detectTripleBottom(candles, swingLows){
+  if (!swingLows || swingLows.length < 3) return null;
+  var n = candles.length;
+  var recent = swingLows.filter(l => l.idx > n - 80).slice(-4);
+  if (recent.length < 3) return null;
+  // 底底高：後面的低點不低於前面（允許1%誤差）
+  var risingBottoms = true;
+  for (var i=1;i<recent.length;i++){
+    if (recent[i].price < recent[i-1].price * 0.99){ risingBottoms = false; break; }
+  }
+  if (!risingBottoms) return null;
+  // 頸線 = 這些底之間的高點
+  var lastLow = recent[recent.length-1];
+  var last = candles[n-1].close;
+  // 頸線估計：取底之間的最高 high
+  var neckline = Math.max.apply(null, candles.slice(recent[0].idx, n).map(c=>c.high)) * 0.998;
+  var brokeNeck = last > neckline;
+  return {
+    found: true, brokeNeck: brokeNeck,
+    bottoms: recent.length, neckline: neckline,
+    defend: Math.min.apply(null, recent.map(l=>l.price)),  // 防守=最低底
+    note: `${recent.length}底底底高` + (brokeNeck?'，突破頸線':'，未破頸線')
+  };
+}
+
+// ── L-2 小橘休息站（校正版7 L-2）──
+// 小橘正斜率 + 價格在小橘附近反覆跌破又站上(洗盤) + 藍綠金叉
+function detectOrangeRest(candles, ma240, ma20, ma60, slopeOrange){
+  var n = candles.length;
+  if (slopeOrange <= 0.04) return null;  // 小橘須正斜率
+  var o = ma240[n-1], last = candles[n-1].close;
+  if (!o) return null;
+  // 價格在小橘附近(±3%)
+  var nearO = Math.abs(last - o) / o < 0.03;
+  if (!nearO) return null;
+  // 數最近30根有幾次「穿越小橘」(洗盤次數)
+  var crosses = 0;
+  for (var i=n-30;i<n;i++){
+    if (i<1 || !ma240[i] || !ma240[i-1]) continue;
+    var above = candles[i].close > ma240[i];
+    var prevAbove = candles[i-1].close > ma240[i-1];
+    if (above !== prevAbove) crosses++;
+  }
+  // 藍綠金叉
+  var goldCross = ma20[n-1] > ma60[n-1] && ma20[n-2] <= ma60[n-2];
+  return {
+    found: crosses >= 3,
+    crosses: crosses, goldCross: goldCross,
+    strong: crosses >= 3 && goldCross,  // 洗盤夠多+金叉=大波段起點
+    note: `小橘休息站(洗盤${crosses}次` + (goldCross?'+藍綠金叉)':'，待金叉)')
+  };
+}
+
+// ── S-2 小橘真假跌破（校正版7 S-2）──
+// 不要第一次跌破就追空，要看反彈站不回 + 破前低
+function detectOrangeBreakdown(candles, ma240, slopeOrange){
+  var n = candles.length;
+  var o = ma240[n-1], last = candles[n-1].close;
+  if (!o) return null;
+  var below = last < o;
+  if (!below) return null;
+  // 近30根內是否曾跌破→反彈→又站不回
+  var brokeIdx = -1;
+  for (var i=n-30;i<n-3;i++){
+    if (ma240[i] && candles[i].close < ma240[i] && candles[i-1] && candles[i-1].close >= ma240[i-1]){
+      brokeIdx = i; break;
+    }
+  }
+  if (brokeIdx < 0) return null;
+  // 跌破後是否曾反彈接近小橘但站不回
+  var reboundFailed = false;
+  for (var j=brokeIdx; j<n; j++){
+    if (ma240[j] && candles[j].high >= ma240[j] * 0.995 && candles[j].close < ma240[j]){
+      reboundFailed = true; break;
+    }
+  }
+  // 是否破了跌破後的反彈低點
+  var postLow = Math.min.apply(null, candles.slice(brokeIdx, n).map(c=>c.low));
+  var brokeNewLow = last <= postLow * 1.005;
+  return {
+    found: reboundFailed && slopeOrange < 0,
+    trueBreak: reboundFailed && brokeNewLow,  // 真跌破
+    note: reboundFailed ? (brokeNewLow ? '小橘真跌破(站不回+破低)' : '小橘跌破待確認') : '小橘假跌破(可能休息站)'
+  };
+}
+
+// ── 蜈蚣腳（校正版8.2）──
+// 關鍵支撐/壓力區連續多根影線 = 反轉警訊
+function detectCentipede(candles){
+  var n = candles.length;
+  var recent = candles.slice(-8);
+  var lowerWicks = 0, upperWicks = 0;
+  recent.forEach(c=>{
+    var body = Math.abs(c.close - c.open);
+    var lw = Math.min(c.open,c.close) - c.low;
+    var uw = c.high - Math.max(c.open,c.close);
+    if (body>0){
+      if (lw > body * 1.2) lowerWicks++;
+      if (uw > body * 1.2) upperWicks++;
+    }
+  });
+  if (lowerWicks >= 5) return { found:true, dir:'LONG', note:`蜈蚣腳(${lowerWicks}根下影,空方打不下)` };
+  if (upperWicks >= 5) return { found:true, dir:'SHORT', note:`蜈蚣腳(${upperWicks}根上影,多方攻不上)` };
+  return null;
+}
+
+// ── 一倍測幅停利目標（校正版9.3 破底翻/釘子K）──
+function calcOneXTarget(candles, dir, entry, swingLows, swingHighs){
+  var n = candles.length;
+  if (dir === 'LONG'){
+    // 破底翻：最低點到頸線距離，翻一倍
+    var lo = swingLows && swingLows.length ? Math.min.apply(null,swingLows.slice(-3).map(l=>l.price)) : Math.min.apply(null,candles.slice(-40).map(c=>c.low));
+    var neck = Math.max.apply(null, candles.slice(-20).map(c=>c.high));
+    var depth = neck - lo;
+    return entry + depth;  // 突破頸線後一倍測幅
+  } else {
+    var hi = swingHighs && swingHighs.length ? Math.max.apply(null,swingHighs.slice(-3).map(h=>h.price)) : Math.max.apply(null,candles.slice(-40).map(c=>c.high));
+    var neckD = Math.min.apply(null, candles.slice(-20).map(c=>c.low));
+    var depthD = hi - neckD;
+    return entry - depthD;
+  }
+}
+
+// ── 關鍵K防守點（校正版9.1 / 10）──
+// 做多守關鍵K低點/形態最低，做空守關鍵K高點/形態最高（不守均線）
+function calcKeyKDefend(candles, dir){
+  var n = candles.length;
+  var recent = candles.slice(-20);
+  // 找成交量明顯大於鄰近的K（關鍵K）
+  var avgVol = recent.reduce((a,c)=>a+c.vol,0)/recent.length;
+  var keyK = null;
+  for (var i=recent.length-1;i>=0;i--){
+    if (recent[i].vol > avgVol * 1.8){ keyK = recent[i]; break; }
+  }
+  if (dir === 'LONG'){
+    var lo = keyK ? keyK.low : Math.min.apply(null, recent.slice(-5).map(c=>c.low));
+    return { defend: lo, note: keyK?'關鍵K低點':'近期最低' };
+  } else {
+    var hi = keyK ? keyK.high : Math.max.apply(null, recent.slice(-5).map(c=>c.high));
+    return { defend: hi, note: keyK?'關鍵K高點':'近期最高' };
+  }
+}
+
 function sandaoScore(candles, flowScore, flowEVBoost) {
   if (!candles || candles.length < 120) return null;
 
@@ -2556,7 +2805,7 @@ function sandaoScore(candles, flowScore, flowEVBoost) {
   var nearGreenResist  = devFromGreen < 1.5 && devFromGreen > -3 && greenNeg && last < g60 * 1.015;
 
   // ── 乖離過大 ──
-  var isOverExtended = Math.abs(devFromOrange) > 25 || Math.abs(devFromBlue) > 12;
+  var isOverExtended = Math.abs(devFromOrange) > 30 || Math.abs(devFromGreen) > 20;  // 校正版5.3：季線(小橘)30%/月線(小綠)20%
 
   // ── RSI ──
   var rc = closes.slice(-14), gain=0, loss=0;
@@ -2693,13 +2942,19 @@ function sandaoScore(candles, flowScore, flowEVBoost) {
   applyPatternsAndFlow();
 
   // ══ 進階心法層 ══
-  // 1. 均線扣抵戰法（小藍進扣低時間做多有利／扣高時間做空有利）
-  var koudi = calcKoudi(closes, 20);
+  // 1. 均線扣抵戰法（校正版11.4：三線同處扣低=最佳買點，抱好抱滿）
+  var koudi   = calcKoudi(closes, 20);                       // 小藍
+  var koudiG  = calcKoudi(closes, 60);                       // 小綠
+  var koudiO  = calcKoudi(closes, Math.min(240, n-1));       // 小橘
+  var koudi3Low  = koudi.bias===1 && koudiG.bias===1 && koudiO.bias===1;   // 三線同扣低
+  var koudi3High = koudi.bias===-1 && koudiG.bias===-1 && koudiO.bias===-1; // 三線同扣高
   if (direction === 'LONG') {
-    if (koudi.bias === 1) { score += 8; reasons.push({txt:'小藍'+koudi.state+'易上彎',type:'pos'}); }
+    if (koudi3Low) { score += 16; reasons.push({txt:'三線同扣低(最佳多方,抱滿)',type:'pos'}); }
+    else if (koudi.bias === 1) { score += 8; reasons.push({txt:'小藍'+koudi.state+'易上彎',type:'pos'}); }
     else if (koudi.bias === -1) { score -= 10; reasons.push({txt:'⚠小藍扣高,追多風險',type:'warn'}); }
   } else if (direction === 'SHORT') {
-    if (koudi.bias === -1) { score += 8; reasons.push({txt:'小藍'+koudi.state+'易下彎',type:'neg'}); }
+    if (koudi3High) { score += 16; reasons.push({txt:'三線同扣高(最佳空方)',type:'neg'}); }
+    else if (koudi.bias === -1) { score += 8; reasons.push({txt:'小藍'+koudi.state+'易下彎',type:'neg'}); }
     else if (koudi.bias === 1) { score -= 10; reasons.push({txt:'⚠小藍扣低,追空風險',type:'warn'}); }
   }
 
@@ -2727,6 +2982,42 @@ function sandaoScore(candles, flowScore, flowEVBoost) {
   // 6. 順勢對稱 1:1 目標價
   var targetPrice = calcSymmetryTarget(candles, direction, last);
 
+  // ══ 波段六法偵測（校正版第7節）══
+  var waveSetups = [];
+  // L-1 三底
+  var tb = detectTripleBottom(candles, patternResult.swingLows);
+  if (tb && tb.found && direction === 'LONG'){
+    if (tb.brokeNeck){ score += 14; waveSetups.push('L1三底突破頸線'); reasons.push({txt:tb.note,type:'pos'}); }
+    else reasons.push({txt:tb.note,type:'warn'});
+  }
+  // L-2 小橘休息站
+  var orest = detectOrangeRest(candles, ma240, ma20, ma60, slopeOrange);
+  if (orest && orest.found && direction === 'LONG'){
+    if (orest.strong){ score += 16; waveSetups.push('L2小橘休息站+金叉'); reasons.push({txt:orest.note,type:'pos'}); }
+    else reasons.push({txt:orest.note,type:'warn'});
+  }
+  // S-2 小橘真假跌破
+  var obrk = detectOrangeBreakdown(candles, ma240, slopeOrange);
+  if (obrk && obrk.found && direction === 'SHORT'){
+    if (obrk.trueBreak){ score += 14; waveSetups.push('S2小橘真跌破'); reasons.push({txt:obrk.note,type:'neg'}); }
+    else reasons.push({txt:obrk.note,type:'warn'});
+  } else if (obrk && !obrk.trueBreak && obrk.note.indexOf('假跌破')>=0 && direction==='SHORT'){
+    // 假跌破 → 不應做空
+    vetoReasons.push('小橘假跌破,勿追空');
+  }
+  // 蜈蚣腳（轉折警訊）
+  var centi = detectCentipede(candles);
+  if (centi && centi.found){
+    if (centi.dir === direction){ score += 8; reasons.push({txt:centi.note,type:direction==='LONG'?'pos':'neg'}); }
+    else { reasons.push({txt:'⚠'+centi.note+'(與信號反向)',type:'warn'}); }
+  }
+
+  // ══ 防守點 + 一倍測幅停利（校正版9 / 10）══
+  var keyDefend = calcKeyKDefend(candles, direction);
+  var oneXTarget = calcOneXTarget(candles, direction, last, patternResult.swingLows, patternResult.swingHighs);
+  // 計算到防守的最大浮動虧損%
+  var maxLossPct = keyDefend.defend ? Math.abs((last - keyDefend.defend) / last * 100) : null;
+
   // ── 第5層：輸出決策 ──
   if (vetoReasons.length > 0) {
     tradeStatus = 'avoid';
@@ -2737,7 +3028,10 @@ function sandaoScore(candles, flowScore, flowEVBoost) {
     if (nearGreenSupport || nearOrangeSupport) {
       tradeStatus = 'ready';
       tradeStatusText = nearGreenSupport ? '✅ 回測小綠到位，可做多' : '✅ 小橘休息站，可做多';
-      score += 10;
+      // 斜率越陡支撐越強（校正版語錄4）：陡坡回測加更多分
+      var steepBonus = Math.abs(slopeGreen) > 0.3 ? 14 : Math.abs(slopeGreen) > 0.15 ? 10 : 6;
+      score += steepBonus;
+      if (Math.abs(slopeGreen) > 0.3) reasons.push({txt:'陡坡回測(支撐強)',type:'pos'});
     } else if (devFromBlue > 4) {
       // 價格已拉離小藍太多 → 等回測
       tradeStatus = 'wait';
@@ -2750,7 +3044,9 @@ function sandaoScore(candles, flowScore, flowEVBoost) {
     if (nearGreenResist) {
       tradeStatus = 'ready';
       tradeStatusText = '✅ 反彈小綠不過，可做空';
-      score += 10;
+      var steepBonusS = Math.abs(slopeGreen) > 0.3 ? 14 : Math.abs(slopeGreen) > 0.15 ? 10 : 6;
+      score += steepBonusS;
+      if (Math.abs(slopeGreen) > 0.3) reasons.push({txt:'陡坡反彈(壓力強)',type:'neg'});
     } else if (devFromBlue < -4) {
       tradeStatus = 'wait';
       tradeStatusText = '⏳ 已離小藍' + devFromBlue.toFixed(1) + '%，等反彈放空';
@@ -2788,7 +3084,13 @@ function sandaoScore(candles, flowScore, flowEVBoost) {
       priorHigh: patternResult.priorHigh, priorLow: patternResult.priorLow,
       targetPrice: (typeof targetPrice !== 'undefined' ? targetPrice : last),
       koudi: (typeof koudi !== 'undefined' ? koudi.state : ''),
+      koudi3Low: (typeof koudi3Low !== 'undefined' ? koudi3Low : false),
       trendHealth: (typeof health !== 'undefined' ? health.note : ''),
+      waveSetups: (typeof waveSetups !== 'undefined' ? waveSetups : []),
+      keyDefend: (typeof keyDefend !== 'undefined' ? keyDefend.defend : null),
+      keyDefendNote: (typeof keyDefend !== 'undefined' ? keyDefend.note : ''),
+      oneXTarget: (typeof oneXTarget !== 'undefined' ? oneXTarget : null),
+      maxLossPct: (typeof maxLossPct !== 'undefined' ? maxLossPct : null),
     };
   }
 }
@@ -2803,18 +3105,18 @@ async function runSandaoScan() {
   document.getElementById('sdStatus').textContent = '抓取60分K數據…';
   sandaoData = [];
 
-  // 取成交量前60名永續合約
+  // 取成交量前200名永續合約（涵蓋近乎全線主流幣）
   var targets = [...swapT]
-    .filter(t => t.volCcy24h > 3e6)
+    .filter(t => t.volCcy24h > 1.5e6)
     .sort((a, b) => b.volCcy24h - a.volCcy24h)
-    .slice(0, 60);
+    .slice(0, 200);
 
   var done = 0;
   var total = targets.length;
 
-  // 批次處理，每批4個
-  for (var i = 0; i < targets.length; i += 6) {
-    var batch = targets.slice(i, i + 6);
+  // 批次處理，每批8個（加速）
+  for (var i = 0; i < targets.length; i += 8) {
+    var batch = targets.slice(i, i + 8);
     await Promise.allSettled(batch.map(async t => {
       var candles = await fetchCandles(t.instId, '1H', 260);
       var flow = orderFlowCache[t.sym] || null;
@@ -2834,12 +3136,16 @@ async function runSandaoScan() {
       }
       done++;
       document.getElementById('sdStatus').textContent =
-        `掃描中 ${done}/${total} (${t.sym})`;
+        `掃描中 ${done}/${total}…（已找到 ${sandaoData.length} 個）`;
     }));
-    await new Promise(res => setTimeout(res, 200));
+    // 每批掃完即時更新畫面（體感快，不用乾等）
+    sandaoData.sort((a, b) => b.score - a.score);
+    renderSandao();
+    // 節流由全域 okx2 控制，這裡只給極短喘息
+    await new Promise(res => setTimeout(res, 50));
   }
 
-  // 排序：分數高的在前
+  // 最終排序
   sandaoData.sort((a, b) => b.score - a.score);
 
   sandaoLoading = false;
@@ -2899,7 +3205,10 @@ ${flowStr ? '🌊 ' + flowStr : ''}
 ${frStr ? '💸 ' + frStr : ''}
 
 🎯 目標價(1:1): $${fmtP2(t.targetPrice)} ${t.targetPrice ? '('+(t.direction==='LONG'?'+':'')+((t.targetPrice-t.last)/t.last*100).toFixed(1)+'%)' : ''}
-📐 扣抵: ${t.koudi || '--'} | 趨勢: ${t.trendHealth || '--'}
+🎯 一倍測幅: $${fmtP2(t.oneXTarget)}
+🛡 防守(${t.keyDefendNote||'--'}): $${fmtP2(t.keyDefend)} ${t.maxLossPct!=null?'(最大浮虧'+t.maxLossPct.toFixed(1)+'%)':''}
+📐 扣抵: ${t.koudi || '--'}${t.koudi3Low?' [三線同扣低,抱滿]':''} | 趨勢: ${t.trendHealth || '--'}
+${t.waveSetups && t.waveSetups.length ? '🌊 波段: '+t.waveSetups.join('、') : ''}
 🎯 EV評分: ${t.evScore} | R:R ${t.rr?.toFixed(1)}x | Kelly ${t.halfKelly?.toFixed(1)}%
 
 🔺 形態: ${(t.patterns && t.patterns.length) ? t.patterns.map(function(p){return p.name+'('+(p.dir==='LONG'?'多':p.dir==='SHORT'?'空':'觀察')+')';}).join('、') : '無明確形態'}
@@ -3113,6 +3422,8 @@ function sendAllHighScore() {
   // UI 初始化延遲（DOM 可能還未掛載）
   setTimeout(function(){
     updateTGStatus();
+    var ap = document.getElementById('aggProxyInput');
+    if(ap && AGG_PROXY) ap.value = AGG_PROXY;
     var b = document.getElementById('autoScanBtn');
     if(b){ b.textContent = autoScanOn ? '🟢 自動掃描:開' : '⚪ 自動掃描:關'; b.className = 'tbtn2' + (autoScanOn ? ' on' : ''); }
   }, 500);
@@ -3268,19 +3579,22 @@ function detectPatterns(candles) {
     var last3Lows = recentLows.slice(-3);
     var leftShoulder = last3Lows[0], head = last3Lows[1], rightShoulder = last3Lows[2];
     // 頭部最低，右肩不低於左肩
+    // 校正版3.3：右肩低點「不能低於」左肩低點（嚴格，不放寬）
     var isHeadShoulder = head.price < leftShoulder.price &&
       head.price < rightShoulder.price &&
-      rightShoulder.price >= leftShoulder.price * 0.99 &&
+      rightShoulder.price >= leftShoulder.price &&
       rightShoulder.idx > n - 30;
+    // 校正版3.3：不要追第一波急彈 → 價格已大幅彈離右肩(>8%)則視為已追高，降信心
+    var chasedFromRS = (last - rightShoulder.price) / rightShoulder.price * 100;
     if (isHeadShoulder) {
       patterns.push({
         name: '頭肩底',
         dir: 'LONG',
-        detail: `左肩$${fmtP2(leftShoulder.price)} 頭$${fmtP2(head.price)} 右肩$${fmtP2(rightShoulder.price)}`,
-        confidence: 'high',
-        defend: head.price, // 防守頭部最低
+        detail: `左肩$${fmtP2(leftShoulder.price)} 頭$${fmtP2(head.price)} 右肩$${fmtP2(rightShoulder.price)}` + (chasedFromRS > 8 ? '(已彈離,勿追)' : ''),
+        confidence: chasedFromRS > 8 ? 'low' : 'high',  // 已急彈→降信心
+        defend: head.price,  // 校正版:最低點(頭部)是防守點
       });
-      scoreAdj += 18;
+      scoreAdj += chasedFromRS > 8 ? 6 : 18;  // 已追高則少加分
     }
   }
 
