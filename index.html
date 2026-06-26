@@ -384,6 +384,7 @@ td{padding:8px 12px;font-size:12.5px;vertical-align:middle;}
   <div class="ni" data-v="risk" onclick="gv(this)"><span class="nicon">⚠️</span>風險雷達</div>
   <div class="ni" data-v="aimonitor" onclick="gv(this)"><span class="nicon">🔔</span>AI異動監控<span class="nbadge nb-live" id="aimonitorBadge"></span></div>
   <div class="ni" data-v="sandao" onclick="gv(this)"><span class="nicon">🗡</span>三刀流選幣<span class="nbadge nb-hot">60分K</span></div>
+  <div class="ni" data-v="cross60" onclick="gv(this)"><span class="nicon">📏</span>60MA突破<span class="nbadge nb-hot">三所</span></div>
   <div class="ng">工具</div>
   <div class="ni" data-v="strategy" onclick="gv(this)"><span class="nicon">⚙️</span>自訂策略</div>
 </nav>
@@ -520,7 +521,7 @@ td{padding:8px 12px;font-size:12.5px;vertical-align:middle;}
 <div class="view" id="view-sandao">
   <div class="sh">
     <div><div class="st">🗡 均線三刀流選幣</div>
-    <div class="ss">60分K · 多空分開 · 立即可做/等待/觀望 明確判讀 · 形態識別</div></div>
+    <div class="ss">60分K · OKX+派網 · 只在小綠附近出訊號 · 波段六法+扣抵+防守點</div></div>
     <div class="sr">
       <button class="hbtn" id="sdScanBtn" onclick="runSandaoScan()">🔍 掃描</button>
       <span class="chip chip-c" id="sdStatus">尚未掃描</span>
@@ -550,7 +551,8 @@ td{padding:8px 12px;font-size:12.5px;vertical-align:middle;}
       <button class="tbtn2" onclick="testTelegram()">📨 測試發送</button>
       <button class="tbtn2" onclick="sendAllHighScore()">📢 發送全部高分標的</button>
       <button class="tbtn2 on" id="autoScanBtn" onclick="toggleAutoScan()">🟢 自動掃描:開</button>
-      <span style="font-size:10.5px;color:var(--text3)">每小時自動掃描+推送（需保持分頁開啟）</span>
+      <button class="tbtn2 on" id="greenOnlyBtn" onclick="toggleGreenOnly()">🟢 只在小綠:開</button>
+      <span style="font-size:10.5px;color:var(--text3)">只在小綠附近才給「立即可做」訊號</span>
     </div>
   </div>
   <div class="sr2" id="sdStats"></div>
@@ -563,6 +565,30 @@ td{padding:8px 12px;font-size:12.5px;vertical-align:middle;}
     <div class="tab" onclick="sdTab(this,'avoid')">🚫 觀望</div>
   </div>
   <div class="tw"><div id="sdBody"><div class="empty2">進入頁面自動掃描中（約30秒）…</div></div></div>
+</div>
+
+<!-- ▸ 60MA 突破掃描 -->
+<div class="view" id="view-cross60">
+  <div class="sh">
+    <div><div class="st">📏 60MA 突破掃描（OKX·幣安·派網）</div>
+    <div class="ss">1H 時序 · 剛漲破/跌破 60MA 的標的 · 整合三刀流方向比對</div></div>
+    <div class="sr">
+      <button class="hbtn" id="c60ScanBtn" onclick="runCross60Scan()">🔍 掃描</button>
+      <span class="chip chip-c" id="c60Status">尚未掃描</span>
+    </div>
+  </div>
+  <div class="tg-setup" style="margin-bottom:12px;">
+    <div style="font-size:11px;color:var(--text2);line-height:1.6;">
+      ⚠️ 此功能需先在「🗡 三刀流選幣」頁設定<b>聚合Worker網址</b>（用於跨交易所抓取，解決CORS）。
+      OKX 可直連；幣安、派網須透過 Worker 中轉。
+    </div>
+  </div>
+  <div class="tabs">
+    <div class="tab on" onclick="c60Tab(this,'up')">📈 漲破60MA</div>
+    <div class="tab" onclick="c60Tab(this,'down')">📉 跌破60MA</div>
+    <div class="tab" onclick="c60Tab(this,'all')">全部</div>
+  </div>
+  <div class="tw"><div id="c60Body"><div class="empty2">點「掃描」開始（OKX直連；幣安/派網需聚合Worker）</div></div></div>
 </div>
 
 <!-- ▸ 策略 -->
@@ -629,6 +655,8 @@ var BASE='https://www.okx.com/api/v5';
 // 部署 data_proxy_worker.js 後，把網址填到這裡（留空則停用真實金額功能）
 var AGG_PROXY = localStorage.getItem('agg_proxy') || '';  // 例: https://valuescan-agg.你的帳號.workers.dev
 var bigTradeCache = {};  // sym -> {netUsd, buyUsd, sellUsd, bigBuys, bigSells, flowScore, ts}
+// 只在小綠(60MA)附近才出現「立即可做」訊號（true=嚴格只認小綠回測/反彈）
+var GREEN_ONLY = (localStorage.getItem('green_only') !== 'off');
 
 // 格式化美元金額
 function fmtUsd(v){
@@ -3025,13 +3053,19 @@ function sandaoScore(candles, flowScore, flowEVBoost) {
     score = Math.max(20, score - 20 * vetoReasons.length);
     vetoReasons.forEach(v => reasons.push({ txt: v, type: 'warn' }));
   } else if (direction === 'LONG') {
-    if (nearGreenSupport || nearOrangeSupport) {
+    // 只在小綠附近才給 ready（GREEN_ONLY）；小橘休息站降為 wait
+    var longReady = GREEN_ONLY ? nearGreenSupport : (nearGreenSupport || nearOrangeSupport);
+    if (longReady) {
       tradeStatus = 'ready';
       tradeStatusText = nearGreenSupport ? '✅ 回測小綠到位，可做多' : '✅ 小橘休息站，可做多';
       // 斜率越陡支撐越強（校正版語錄4）：陡坡回測加更多分
       var steepBonus = Math.abs(slopeGreen) > 0.3 ? 14 : Math.abs(slopeGreen) > 0.15 ? 10 : 6;
       score += steepBonus;
-      if (Math.abs(slopeGreen) > 0.3) reasons.push({txt:'陡坡回測(支撐強)',type:'pos'});
+      if (Math.abs(slopeGreen) > 0.3) reasons.push({txt:'陡坡回測小綠(支撐強)',type:'pos'});
+    } else if (nearOrangeSupport) {
+      // 小橘休息站：方向對但非小綠回測 → 標等待（GREEN_ONLY模式）
+      tradeStatus = 'wait';
+      tradeStatusText = '⏳ 小橘休息站，等回測小綠進場';
     } else if (devFromBlue > 4) {
       // 價格已拉離小藍太多 → 等回測
       tradeStatus = 'wait';
@@ -3124,6 +3158,7 @@ async function runSandaoScan() {
       if (result) {
         sandaoData.push({
           sym: t.sym, instId: t.instId,
+          exchange: 'okx',
           last: t.last, changePct: t.changePct,
           volCcy24h: t.volCcy24h,
           fundingRate: t.fundingRate,
@@ -3143,6 +3178,53 @@ async function runSandaoScan() {
     renderSandao();
     // 節流由全域 okx2 控制，這裡只給極短喘息
     await new Promise(res => setTimeout(res, 50));
+  }
+
+  // ── 加入派網(Pionex)標的（需聚合 Worker）──
+  if (AGG_PROXY) {
+    try {
+      document.getElementById('sdStatus').textContent = '抓取派網合約清單…';
+      var pxResp = await fetch(`${AGG_PROXY}/agg?action=pionexsymbols`);
+      var pxSyms = await pxResp.json();
+      if (Array.isArray(pxSyms)) {
+        // 只掃派網有、但 OKX 掃描清單沒有的（避免重複），取前 60
+        var okxSyms = new Set(sandaoData.map(d => d.sym));
+        var pxOnly = pxSyms.filter(s => !okxSyms.has(s)).slice(0, 60);
+        var pxDone = 0;
+        for (var pi = 0; pi < pxOnly.length; pi += 6) {
+          var pxBatch = pxOnly.slice(pi, pi + 6);
+          await Promise.allSettled(pxBatch.map(async sym => {
+            try {
+              var cResp = await fetch(`${AGG_PROXY}/agg?action=pionexcandles&sym=${sym}`);
+              var candles = await cResp.json();
+              if (!Array.isArray(candles) || candles.length < 120) return;
+              // 收定確認：去掉未收完的最後一根
+              if (candles.length > 1) {
+                var barMs = candles.length>=2 ? candles[candles.length-1].ts - candles[candles.length-2].ts : 3600000;
+                if (candles[candles.length-1].ts + barMs > Date.now()) candles.pop();
+              }
+              var result = sandaoScore(candles, null, 0);
+              if (result) {
+                var lastC = candles[candles.length-1];
+                sandaoData.push({
+                  sym: sym, instId: sym+'_USDT', exchange: 'pionex',
+                  last: lastC.close,
+                  changePct: candles.length>24 ? (lastC.close-candles[candles.length-24].close)/candles[candles.length-24].close*100 : 0,
+                  volCcy24h: 0, fundingRate: null,
+                  evScore: result.score, ev: 0, rr: 0, halfKelly: 0,
+                  flowScore: null, flowLabel: '--',
+                  ...result,
+                });
+              }
+            } catch(e){}
+          }));
+          pxDone += pxBatch.length;
+          document.getElementById('sdStatus').textContent = `掃描派網 ${pxDone}/${pxOnly.length}…`;
+          sandaoData.sort((a,b)=>b.score-a.score);
+          renderSandao();
+        }
+      }
+    } catch(e){ console.warn('派網掃描失敗', e); }
   }
 
   // 最終排序
@@ -3332,7 +3414,7 @@ function renderSandao() {
 
   document.getElementById('sdBody').innerHTML = `<table>
     <thead><tr>
-      <th>#</th><th>幣種</th><th>操作判讀</th><th>方向</th><th>三刀流分</th>
+      <th>#</th><th>幣種</th><th>交易所</th><th>操作判讀</th><th>方向</th><th>三刀流分</th>
       <th>形態</th><th>市場環境</th><th>小藍斜率</th><th>小綠斜率</th><th>小橘斜率</th>
       <th>價格位置</th><th>進場建議</th><th>大單流向</th>
       <th>EV分</th><th>現價</th><th>24h漲跌</th><th>通知</th>
@@ -3355,6 +3437,7 @@ function renderSandao() {
       return `<tr>
         <td class="mono" style="color:var(--text3)">${i + 1}</td>
         <td><div class="cc2"><div class="ci2">${t.sym.slice(0, 2)}</div><div><div class="cn2">${t.sym}</div></div></div></td>
+        <td>${t.exchange==='pionex' ? '<span class="pat-badge" style="background:rgba(168,85,247,.12);color:var(--purple)">派網</span>' : '<span class="pat-badge" style="background:rgba(0,212,255,.1);color:var(--accent)">OKX</span>'}</td>
         <td><span class="trade-status ts-${t.tradeStatus}">${t.tradeStatusText}</span></td>
         <td>${dir}</td>
         <td><div class="sb-wrap"><div class="sb-bg"><div class="sb-fill" style="width:${t.score}%;background:${scC(t.score)}"></div></div><span class="sb-num" style="color:${scC(t.score)};font-weight:700">${t.score}</span></div></td>
@@ -3426,6 +3509,8 @@ function sendAllHighScore() {
     if(ap && AGG_PROXY) ap.value = AGG_PROXY;
     var b = document.getElementById('autoScanBtn');
     if(b){ b.textContent = autoScanOn ? '🟢 自動掃描:開' : '⚪ 自動掃描:關'; b.className = 'tbtn2' + (autoScanOn ? ' on' : ''); }
+    var gb = document.getElementById('greenOnlyBtn');
+    if(gb){ gb.textContent = GREEN_ONLY ? '🟢 只在小綠:開' : '⚪ 只在小綠:關'; gb.className = 'tbtn2' + (GREEN_ONLY ? ' on' : ''); }
   }, 500);
 })();
 
@@ -3450,6 +3535,148 @@ detectAnomalies = function() {
 //  形態識別引擎 (Pattern Recognition)
 //  基於三刀流教材：擺動高低點 + 次高/末跌高/頭肩底/
 //  三顧茅廬/90度急漲急跌/背離
+
+// ══════════════════════════════════════════════════════
+//  60MA 突破掃描（OKX + 幣安 + 派網，整合三刀流）
+// ══════════════════════════════════════════════════════
+var cross60Data = [];
+var cross60Loading = false;
+var c60TabCur = 'up';
+
+function c60Tab(el, tab){
+  document.querySelectorAll('#view-cross60 .tab').forEach(t=>t.classList.remove('on'));
+  el.classList.add('on');
+  c60TabCur = tab;
+  renderCross60();
+}
+
+async function runCross60Scan(){
+  if (cross60Loading) return;
+  cross60Loading = true;
+  document.getElementById('c60ScanBtn').textContent = '⏳ 掃描中…';
+  cross60Data = [];
+
+  // 取成交量前 100 的幣（共用 swapT）當掃描清單
+  var syms = [...swapT].filter(t=>t.volCcy24h>2e6)
+    .sort((a,b)=>b.volCcy24h-a.volCcy24h).slice(0,100).map(t=>t.sym);
+
+  var exchanges = [];
+  // OKX 一律掃（可直連，但仍透過 Worker 統一較穩；若無 Worker 用前端直抓）
+  document.getElementById('c60Status').textContent = '掃描 OKX…';
+  await scanExchange60('okx', syms);
+
+  if (AGG_PROXY){
+    document.getElementById('c60Status').textContent = '掃描 幣安…';
+    await scanExchange60('binance', syms);
+    document.getElementById('c60Status').textContent = '掃描 派網…';
+    await scanExchange60('pionex', syms);
+  }
+
+  // 整合三刀流方向比對
+  cross60Data.forEach(c=>{
+    var sd = sandaoData.find(d=>d.sym===c.sym);
+    c.sandaoDir = sd ? sd.direction : null;
+    c.sandaoStatus = sd ? sd.tradeStatus : null;
+    c.sandaoScore = sd ? sd.score : null;
+    var crossDir = c.crossUp ? 'LONG' : 'SHORT';
+    c.agree = (c.sandaoDir && c.sandaoDir!=='NEUTRAL')
+      ? (c.sandaoDir===crossDir ? 'agree' : 'conflict') : 'unknown';
+  });
+
+  cross60Loading = false;
+  document.getElementById('c60ScanBtn').textContent = '🔄 重新掃描';
+  var upN = cross60Data.filter(c=>c.crossUp).length;
+  var dnN = cross60Data.filter(c=>c.crossDown).length;
+  document.getElementById('c60Status').textContent =
+    `完成 · 漲破${upN} 跌破${dnN} · ${new Date().toLocaleTimeString('zh-TW')}`;
+  renderCross60();
+}
+
+async function scanExchange60(ex, syms){
+  if (ex==='okx' && !AGG_PROXY){
+    // 無 Worker：前端直接抓 OKX（受全域節流保護）
+    for (var i=0;i<syms.length;i+=8){
+      var batch = syms.slice(i,i+8);
+      await Promise.allSettled(batch.map(async sym=>{
+        try {
+          var candles = await fetchCandles(sym+'-USDT-SWAP', '1H');
+          var closes = candles.map(c=>c.close);
+          var cr = detect60Cross(closes);
+          if (cr && (cr.crossUp||cr.crossDown)){
+            cross60Data.push({ exchange:'okx', sym, ...cr });
+          }
+        } catch(e){}
+      }));
+    }
+    return;
+  }
+  if (!AGG_PROXY) return;
+  // 透過聚合 Worker
+  try {
+    var url = `${AGG_PROXY}/agg?action=cross60&ex=${ex}&syms=${syms.join(',')}`;
+    var r = await fetch(url);
+    var d = await r.json();
+    if (Array.isArray(d)) d.forEach(c=>cross60Data.push(c));
+  } catch(e){}
+}
+
+// 前端版 60MA 突破偵測（OKX 直連用）
+function detect60Cross(closes){
+  var n = closes.length;
+  if (n < 62) return null;
+  var ma_now=0; for(var i=n-60;i<n;i++) ma_now+=closes[i]; ma_now/=60;
+  var ma_prev=0; for(var j=n-61;j<n-1;j++) ma_prev+=closes[j]; ma_prev/=60;
+  var priceNow=closes[n-1], pricePrev=closes[n-2];
+  return {
+    ma_now, priceNow,
+    crossUp: pricePrev<=ma_prev && priceNow>ma_now,
+    crossDown: pricePrev>=ma_prev && priceNow<ma_now,
+    distPct: (priceNow-ma_now)/ma_now*100,
+  };
+}
+
+function renderCross60(){
+  if (!cross60Data.length){
+    document.getElementById('c60Body').innerHTML =
+      '<div class="empty2">無突破標的，或尚未掃描</div>';
+    return;
+  }
+  var data = cross60Data.filter(c=>{
+    if (c60TabCur==='up') return c.crossUp;
+    if (c60TabCur==='down') return c.crossDown;
+    return true;
+  }).sort((a,b)=>Math.abs(a.distPct)-Math.abs(b.distPct)); // 剛突破(離MA近)的排前
+
+  if (!data.length){ document.getElementById('c60Body').innerHTML='<div class="empty2">此分類無標的</div>'; return; }
+
+  var exTag = e => e==='okx'?'<span class="pat-badge" style="background:rgba(0,212,255,.12);color:var(--accent)">OKX</span>'
+    : e==='binance'?'<span class="pat-badge" style="background:rgba(240,185,11,.12);color:#f0b90b">幣安</span>'
+    : '<span class="pat-badge" style="background:rgba(168,85,247,.12);color:var(--purple)">派網</span>';
+
+  document.getElementById('c60Body').innerHTML = `<table>
+    <thead><tr><th>#</th><th>幣種</th><th>交易所</th><th>方向</th><th>現價</th><th>60MA</th><th>距MA</th><th>三刀流比對</th></tr></thead>
+    <tbody>${data.map((c,i)=>{
+      var dir = c.crossUp
+        ? '<span class="ev-badge evl" style="font-size:11px;padding:4px 9px">📈 漲破</span>'
+        : '<span class="ev-badge evs" style="font-size:11px;padding:4px 9px">📉 跌破</span>';
+      var sdCmp = c.sandaoDir
+        ? (c.agree==='agree' ? '<span class="tl-agree tl-ag-ok">✓三刀流同向('+(c.sandaoScore||'')+')</span>'
+           : c.agree==='conflict' ? '<span class="tl-agree tl-ag-bad">✗三刀流反向</span>'
+           : '<span style="color:var(--text3);font-size:10px">三刀流中性</span>')
+        : '<span style="color:var(--text3);font-size:10px">無三刀流資料</span>';
+      return `<tr>
+        <td class="mono" style="color:var(--text3)">${i+1}</td>
+        <td><div class="cc2"><div class="ci2">${c.sym.slice(0,2)}</div><div class="cn2">${c.sym}</div></div></td>
+        <td>${exTag(c.exchange)}</td>
+        <td>${dir}</td>
+        <td class="mono">$${fmtP2(c.priceNow)}</td>
+        <td class="mono" style="color:var(--text2)">$${fmtP2(c.ma_now)}</td>
+        <td class="mono ${c.distPct>=0?'g':'r'}">${c.distPct>=0?'+':''}${c.distPct.toFixed(2)}%</td>
+        <td>${sdCmp}</td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+}
+
 // ══════════════════════════════════════════════════════
 
 // ── 找擺動高低點 (Swing High/Low) ──
@@ -3729,6 +3956,7 @@ function gv(el){
   if(v==='smartmoney'){ if(!smartMoneyData.length) refreshSmartMoney(); else renderSmartMoney(); }
   if(v==='aimonitor') renderAIMonitor();
   if(v==='sandao'){ if(!sandaoData.length){ renderSandao(); runSandaoScan(); } else renderSandao(); }
+  if(v==='cross60') renderCross60();
 }
 async function refreshAll(){
   toast2('🔄 刷新中…');
@@ -3759,6 +3987,14 @@ setInterval(()=>{ if(document.querySelector('.ni.on')?.dataset.v==='whale') load
 // ── 三刀流每 1 小時自動掃描 + 自動推 Telegram ──
 // 註：需保持此分頁開啟才會持續執行
 var autoScanOn = (localStorage.getItem('auto_scan') !== 'off');
+function toggleGreenOnly(){
+  GREEN_ONLY = !GREEN_ONLY;
+  localStorage.setItem('green_only', GREEN_ONLY ? 'on' : 'off');
+  var btn = document.getElementById('greenOnlyBtn');
+  if(btn){ btn.textContent = GREEN_ONLY ? '🟢 只在小綠:開' : '⚪ 只在小綠:關'; btn.className = 'tbtn2' + (GREEN_ONLY?' on':''); }
+  toast2(GREEN_ONLY ? '✅ 已開啟：只在小綠附近出訊號' : '⏸ 已關閉：小橘休息站也可出訊號');
+  if(sandaoData.length) runSandaoScan();
+}
 function toggleAutoScan(){
   autoScanOn = !autoScanOn;
   localStorage.setItem('auto_scan', autoScanOn ? 'on' : 'off');
